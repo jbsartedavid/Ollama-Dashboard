@@ -1,8 +1,10 @@
 import os
 import sqlite3
+import sys
 import time
 from contextlib import contextmanager
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Iterator
 
 import requests
@@ -11,7 +13,13 @@ from flask import Flask, jsonify, render_template, request
 app = Flask(__name__)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
 DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
-DATABASE_PATH = os.getenv("DASHBOARD_DATABASE", os.path.join(app.root_path, "dashboard.db"))
+if getattr(sys, "frozen", False):
+    data_directory = Path(os.getenv("LOCALAPPDATA", Path.home())) / "OllamaDashboard"
+    data_directory.mkdir(parents=True, exist_ok=True)
+    default_database_path = data_directory / "dashboard.db"
+else:
+    default_database_path = Path(app.root_path) / "dashboard.db"
+DATABASE_PATH = os.getenv("DASHBOARD_DATABASE", str(default_database_path))
 
 
 def _connect_db() -> sqlite3.Connection:

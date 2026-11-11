@@ -5,3 +5,4 @@ __pycache__/
 dashboard.db*
 logs/
 .vscode/
+build/
