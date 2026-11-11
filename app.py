@@ -718,7 +718,14 @@ def restrict_remote_dashboard_access():
         "openai_client_proxy",
         "ollama_proxy",
     }:
-        return jsonify({"error": "The dashboard management interface is available on this computer only."}), 403
+        return jsonify(
+            {
+                "error": (
+                    "The dashboard management interface is available on this computer only. "
+                    "Use /v1 as the base URL for OpenAI-compatible clients or /api for Ollama clients."
+                )
+            }
+        ), 403
     return None
 
 

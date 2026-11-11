@@ -171,7 +171,7 @@
                   <input id="clientProxyEnabled" type="checkbox" />
                   Enable the LAN monitoring proxy
                 </label>
-                <p class="field-help">Point monitored clients at the proxy address below. Requests sent directly to Ollama on port 11434 still work, but bypass dashboard history and memory.</p>
+                <p class="field-help">Point monitored clients at the proxy address below. For OpenAI-compatible clients such as OmniRoute, append <code>/v1</code> to the base URL. If a client requires an API key while proxy authentication is off, any non-empty placeholder is accepted. Requests sent directly to Ollama on port 11434 still work, but bypass dashboard history and memory.</p>
                 <label for="clientGatewayUrl">Ollama address for clients</label>
                 <input id="clientGatewayUrl" type="text" readonly />
                 <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy Ollama address</button>
