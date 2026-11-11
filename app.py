@@ -727,6 +727,7 @@ def restrict_remote_dashboard_access():
         "generate_text",
         "ollama_client_proxy",
         "openai_client_proxy",
+        "openai_root_client_proxy",
         "ollama_proxy",
     }:
         return jsonify(
@@ -1097,6 +1098,14 @@ def openai_client_proxy(openai_path: str):
     if _is_loopback_request():
         return jsonify({"error": "The root OpenAI-compatible proxy is reserved for remote authenticated clients."}), 404
     return ollama_proxy(f"v1/{openai_path}" if openai_path else "v1")
+
+
+@app.route("/models", methods=["GET"], endpoint="openai_root_client_proxy")
+@app.route("/chat/completions", methods=["POST"], endpoint="openai_root_client_proxy")
+def openai_root_client_proxy():
+    if _is_loopback_request():
+        return jsonify({"error": "The root OpenAI-compatible proxy is reserved for remote clients."}), 404
+    return ollama_proxy(f"v1{request.path}")
 
 
 def _record_activity(
