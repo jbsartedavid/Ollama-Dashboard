@@ -6,7 +6,65 @@ $python = Join-Path $projectDirectory '.venv\Scripts\python.exe'
 $logDirectory = Join-Path $projectDirectory 'logs'
 $stdoutLog = Join-Path $logDirectory 'dashboard.stdout.log'
 $stderrLog = Join-Path $logDirectory 'dashboard.stderr.log'
-$dashboardUrl = 'http://127.0.0.1:5000/'
+$dashboardPort = 5111
+if ($env:OLLAMA_DASHBOARD_PORT) {
+    $dashboardPort = [int]$env:OLLAMA_DASHBOARD_PORT
+}
+else {
+    try {
+        $userPort = [Environment]::GetEnvironmentVariable(
+            'OLLAMA_DASHBOARD_PORT',
+            [EnvironmentVariableTarget]::User
+        )
+        if ($userPort) {
+            $dashboardPort = [int]$userPort
+        }
+    }
+    catch {
+        throw "Could not read the configured dashboard port: $($_.Exception.Message)"
+    }
+}
+
+if ($dashboardPort -lt 1 -or $dashboardPort -gt 65535) {
+    throw 'OLLAMA_DASHBOARD_PORT must be between 1 and 65535.'
+}
+
+$lastPort = [Math]::Min($dashboardPort + 20, 65535)
+$selectedPort = $null
+$dashboardAlreadyRunning = $false
+
+for ($candidatePort = $dashboardPort; $candidatePort -le $lastPort; $candidatePort++) {
+    $candidateUrl = "http://127.0.0.1:$candidatePort/"
+    try {
+        $health = Invoke-RestMethod -Uri "${candidateUrl}api/settings" -TimeoutSec 1
+        if ($health.PSObject.Properties.Name -contains 'gatewayEnabled') {
+            $selectedPort = $candidatePort
+            $dashboardAlreadyRunning = $true
+            break
+        }
+    }
+    catch {
+    }
+
+    $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Any, $candidatePort)
+    try {
+        $listener.Start()
+        $listener.Stop()
+        $selectedPort = $candidatePort
+        break
+    }
+    catch {
+        $listener.Stop()
+    }
+}
+
+if ($null -eq $selectedPort) {
+    throw "No available dashboard port found between $dashboardPort and $lastPort."
+}
+
+$dashboardPort = $selectedPort
+$env:OLLAMA_DASHBOARD_PORT = [string]$dashboardPort
+$dashboardUrl = "http://127.0.0.1:$dashboardPort/"
 
 function Test-Dashboard {
     try {
@@ -28,7 +86,7 @@ if (-not (Test-Path -LiteralPath $python)) {
     exit 1
 }
 
-if (-not (Test-Dashboard)) {
+if (-not $dashboardAlreadyRunning) {
     New-Item -ItemType Directory -Force -Path $logDirectory | Out-Null
     Start-Process `
         -FilePath $python `

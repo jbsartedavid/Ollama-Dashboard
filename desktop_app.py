@@ -27,7 +27,7 @@ def _configured_port() -> int:
                 value, _ = winreg.QueryValueEx(key, "OLLAMA_DASHBOARD_PORT")
         except OSError:
             value = None
-    return int(value or "5000")
+    return int(value or "5111")
 
 
 PORT = _configured_port()
@@ -55,7 +55,7 @@ def _dashboard_is_running_on(port: int) -> bool:
 
 
 def _find_running_dashboard() -> int | None:
-    last_port = PORT if PORT == 11434 else min(PORT + 20, 65535)
+    last_port = min(PORT + 20, 65535)
     for port in range(PORT, last_port + 1):
         if _dashboard_is_running_on(port):
             return port
@@ -63,7 +63,7 @@ def _find_running_dashboard() -> int | None:
 
 
 def _find_available_port() -> int:
-    last_port = PORT if PORT == 11434 else min(PORT + 20, 65535)
+    last_port = min(PORT + 20, 65535)
     for port in range(PORT, last_port + 1):
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.settimeout(0.2)
@@ -75,12 +75,6 @@ def _find_available_port() -> int:
                 return port
             except OSError:
                 continue
-    if PORT == 11434:
-        raise OSError(
-            "Port 11434 is required for default-port client monitoring, but another "
-            "process owns it. Stop Ollama Desktop and run Ollama on 127.0.0.1:11435, "
-            "then restart the dashboard."
-        )
     raise OSError(f"No free local port found between {PORT} and {last_port}.")
 
 
@@ -188,8 +182,7 @@ def main() -> None:
             "Ollama Dashboard",
             "Could not start the local dashboard server.\n\n"
             f"{exc}\n\n"
-            "For default-port client monitoring, keep OLLAMA_DASHBOARD_PORT set to "
-            "11434 and move Ollama to 127.0.0.1:11435.",
+            "Set OLLAMA_DASHBOARD_PORT to a free port, then restart the dashboard.",
             parent=root,
         )
 

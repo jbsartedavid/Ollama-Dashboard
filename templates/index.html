@@ -167,12 +167,15 @@
                 <div class="gateway-divider"></div>
                 <p class="subsection-title">Remote client monitoring</p>
                 <p id="remoteMonitoringStatus" class="field-help">Checking the Ollama monitoring proxy…</p>
-                <p class="field-help">Clients keep using the same server address and port 11434. Chat and generation requests are recorded here.</p>
-                <p class="field-help warning-copy">Requests that connect directly to an Ollama process bypass this dashboard. With port takeover, Ollama runs locally on port 11435 and this dashboard forwards the standard API on port 11434.</p>
+                <label class="checkbox-label" for="clientProxyEnabled">
+                  <input id="clientProxyEnabled" type="checkbox" />
+                  Enable the LAN monitoring proxy
+                </label>
+                <p class="field-help">Point monitored clients at the proxy address below. Requests sent directly to Ollama on port 11434 still work, but bypass dashboard history and memory.</p>
                 <label for="clientGatewayUrl">Ollama address for clients</label>
                 <input id="clientGatewayUrl" type="text" readonly />
                 <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy Ollama address</button>
-                <p class="field-help warning-copy">Keep port 11434 behind a trusted LAN or VPN firewall; do not expose it directly to the public internet.</p>
+                <p class="field-help warning-copy">Proxy access is limited to trusted private networks. Restrict its port to your LAN or VPN; do not expose it to the public internet.</p>
 
                 <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
                 <p id="settingsMessage" class="form-message" role="status"></p>

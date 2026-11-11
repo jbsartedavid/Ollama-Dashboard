@@ -194,9 +194,10 @@ async function loadSettings() {
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
+  document.getElementById('clientProxyEnabled').checked = settings.gatewayEnabled;
   document.getElementById('remoteMonitoringStatus').textContent = settings.gatewayEnabled
-    ? 'Monitoring is active on port 11434. Clients use the same Ollama address; no dashboard key or client changes are needed.'
-    : 'The monitoring proxy is available when the dashboard is configured to own port 11434.';
+    ? `Monitoring proxy is enabled at ${settings.clientGatewayUrl}. Clients must use this address; direct connections to Ollama on port 11434 bypass monitoring.`
+    : 'Monitoring proxy is disabled. Enable it and point monitored clients at the address below.';
   const refreshInterval = document.getElementById('refreshInterval');
   refreshInterval.value = String(settings.autoRefreshSeconds);
   refreshInterval.dataset.savedValue = String(settings.autoRefreshSeconds);
@@ -246,6 +247,7 @@ async function saveSettings(event) {
       body: JSON.stringify({
         baseUrl: document.getElementById('ollamaBaseUrl').value,
         keepAlive: document.getElementById('keepAliveInput').value,
+        gatewayEnabled: document.getElementById('clientProxyEnabled').checked,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
       })

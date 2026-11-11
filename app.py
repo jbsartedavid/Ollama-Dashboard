@@ -573,33 +573,11 @@ def _add_memory_context(path: str, body: dict[str, Any], context: str) -> dict[s
 
 def _get_ollama_config() -> dict[str, Any]:
     base_url = _get_setting("base_url", ENV_OLLAMA_BASE_URL)
-    parsed_url = urlsplit(base_url)
-    hostname = parsed_url.hostname or ""
-    try:
-        is_loopback = ipaddress.ip_address(hostname).is_loopback
-    except ValueError:
-        is_loopback = hostname.lower() == "localhost"
-
-    listener_port = (
-        request.environ.get("SERVER_PORT", "")
-        if has_request_context()
-        else os.getenv("OLLAMA_DASHBOARD_PORT", "")
-    )
-    uses_default_client_port = listener_port == "11434"
-    if uses_default_client_port and is_loopback and parsed_url.port == 11434:
-        netloc = f"[{hostname}]:11435" if ":" in hostname else f"{hostname}:11435"
-        base_url = parsed_url._replace(netloc=netloc).geturl()
-        parsed_url = urlsplit(base_url)
-    port_takeover = uses_default_client_port and is_loopback and parsed_url.port == 11435
     return {
         "base_url": base_url,
         "keep_alive": _get_setting("keep_alive", "5m"),
-        "gateway_enabled": (
-            port_takeover or _get_setting("gateway_enabled", "false") == "true"
-        ),
-        "gateway_auth_required": (
-            False if port_takeover else _get_setting("gateway_auth_required", "false") == "true"
-        ),
+        "gateway_enabled": _get_setting("gateway_enabled", "true") == "true",
+        "gateway_auth_required": _get_setting("gateway_auth_required", "false") == "true",
     }
 
 
@@ -704,7 +682,7 @@ def _get_lan_ip() -> str | None:
 
 def _client_gateway_url() -> str:
     address = _get_lan_ip() or "<server-lan-ip>"
-    port = request.environ.get("SERVER_PORT", "5000")
+    port = request.environ.get("SERVER_PORT", "5111")
     return f"http://{address}:{port}"
 
 
@@ -1699,6 +1677,6 @@ def activity_metrics():
 if __name__ == "__main__":
     app.run(
         host="0.0.0.0",
-        port=int(os.getenv("OLLAMA_DASHBOARD_PORT", "5000")),
+        port=int(os.getenv("OLLAMA_DASHBOARD_PORT", "5111")),
         debug=False,
     )
