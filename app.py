@@ -25,7 +25,6 @@ import requests
 from flask import (
     Flask,
     Response,
-    has_request_context,
     jsonify,
     render_template,
     request,
@@ -1193,6 +1192,10 @@ def ollama_settings():
                 "clientAccessKeyConfigured": _has_secret("gateway_access_key"),
                 "clientGatewayUrl": _client_gateway_url(),
                 "autoRefreshSeconds": _get_auto_refresh_seconds(),
+                "startAtSignIn": _get_setting("start_at_sign_in", "false") == "true",
+                "startWhenOllamaAvailable": (
+                    _get_setting("start_when_ollama_available", "false") == "true"
+                ),
             }
         )
 
@@ -1208,6 +1211,85 @@ def ollama_settings():
         app.logger.exception("Could not save Ollama settings")
         return jsonify({"error": "Could not securely save the API key on this Windows account."}), 500
     return jsonify({"saved": True})
+
+
+@app.route("/api/settings/automation", methods=["POST"])
+def save_startup_settings():
+    if not _is_loopback_request():
+        return jsonify({"error": "Startup settings are available only on the dashboard host."}), 403
+    if sys.platform != "win32":
+        return jsonify({"error": "Windows startup options are only available on Windows."}), 501
+
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Request body must be a JSON object."}), 400
+    start_at_sign_in = body.get("startAtSignIn")
+    start_when_ollama_available = body.get("startWhenOllamaAvailable")
+    if not isinstance(start_at_sign_in, bool) or not isinstance(start_when_ollama_available, bool):
+        return jsonify({"error": "Startup options must be boolean values."}), 400
+
+    try:
+        import winreg
+
+        executable = sys.executable
+        is_frozen = getattr(sys, "frozen", False)
+        startup_values = {
+            "OllamaDashboard": (
+                start_at_sign_in,
+                [executable] if is_frozen else [executable, str(Path(__file__).with_name("desktop_app.py"))],
+            ),
+            "OllamaDashboardWaitForOllama": (
+                start_when_ollama_available,
+                [executable, "--wait-for-ollama"]
+                if is_frozen
+                else [
+                    executable,
+                    str(Path(__file__).with_name("desktop_app.py")),
+                    "--wait-for-ollama",
+                ],
+            ),
+        }
+        with winreg.CreateKey(
+            winreg.HKEY_CURRENT_USER,
+            r"Software\Microsoft\Windows\CurrentVersion\Run",
+        ) as key:
+            for name, (enabled, command) in startup_values.items():
+                if enabled:
+                    winreg.SetValueEx(
+                        key,
+                        name,
+                        0,
+                        winreg.REG_SZ,
+                        subprocess.list2cmdline(command),
+                    )
+                else:
+                    try:
+                        winreg.DeleteValue(key, name)
+                    except FileNotFoundError:
+                        pass
+        with _db_session() as connection:
+            connection.executemany(
+                "INSERT INTO settings (name, value) VALUES (?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+                [
+                    ("start_at_sign_in", "true" if start_at_sign_in else "false"),
+                    (
+                        "start_when_ollama_available",
+                        "true" if start_when_ollama_available else "false",
+                    ),
+                ],
+            )
+    except (OSError, sqlite3.Error):
+        app.logger.exception("Could not save Windows startup options")
+        return jsonify({"error": "Could not update Windows startup options."}), 500
+
+    return jsonify(
+        {
+            "saved": True,
+            "startAtSignIn": start_at_sign_in,
+            "startWhenOllamaAvailable": start_when_ollama_available,
+        }
+    )
 
 
 @app.route("/api/settings/refresh-interval", methods=["POST"])

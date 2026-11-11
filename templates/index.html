@@ -179,6 +179,20 @@
 
                 <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
                 <p id="settingsMessage" class="form-message" role="status"></p>
+
+                <div class="gateway-divider"></div>
+                <p class="subsection-title">Automatic startup</p>
+                <label class="checkbox-label" for="startAtSignIn">
+                  <input id="startAtSignIn" type="checkbox" />
+                  Start dashboard when I sign in to Windows
+                </label>
+                <label class="checkbox-label" for="startWhenOllamaAvailable">
+                  <input id="startWhenOllamaAvailable" type="checkbox" />
+                  Start dashboard when Ollama becomes available
+                </label>
+                <p class="field-help">The Ollama option waits for its API after sign-in, then opens the dashboard if it is not already running. Changes take effect at the next Windows sign-in. You can always start it on demand from the Desktop shortcut.</p>
+                <button id="saveStartupSettingsBtn" class="secondary-button" type="button">Save startup options</button>
+                <p id="startupSettingsMessage" class="form-message" role="status"></p>
               </form>
             </section>
 

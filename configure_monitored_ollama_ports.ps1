@@ -16,7 +16,7 @@ if ($PSCmdlet.ShouldProcess(
     Remove-Item Env:OLLAMA_HOST -ErrorAction SilentlyContinue
     $env:OLLAMA_DASHBOARD_PORT = $dashboardPortValue
 
-    if (-not ('OllamaDashboard.EnvironmentNotifier' -as [type])) {
+    if (-not ('OllamaDashboardEnvironmentNotifier' -as [type])) {
         Add-Type @'
 using System;
 using System.Runtime.InteropServices;

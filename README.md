@@ -67,7 +67,9 @@ To add a Desktop shortcut to the executable, run:
 .\create_desktop_shortcut.ps1
 ```
 
-Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. The dashboard defaults to port 5111 and searches the next 20 ports if it is occupied, leaving Ollama's default port 11434 available. The selected port is shown in the control window. Set `OLLAMA_DASHBOARD_PORT` to choose another starting port. The shortcut does not configure automatic startup when you sign in to Windows.
+Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. The dashboard defaults to port 5111 and searches the next 20 ports if it is occupied, leaving Ollama's default port 11434 available. The selected port is shown in the control window. On Windows, set the user-level `OLLAMA_DASHBOARD_PORT` environment variable (for example, with `configure_monitored_ollama_ports.ps1 -DashboardPort 5123`) to choose another starting port. The launcher prefers that saved setting over a stale environment inherited by an already-running Windows shell. The shortcut does not configure automatic startup when you sign in to Windows.
+
+The **Automatic startup** options in Ollama settings can start the dashboard when you sign in to Windows, or wait for Ollama's API to become available after sign-in and start the dashboard then. These options take effect the next time you sign in. The Desktop shortcut remains available for on-demand startup.
 
 The executable keeps activity data and diagnostic logs under `%LOCALAPPDATA%\OllamaDashboard`; it does not write into the installation folder.
 
@@ -102,7 +104,7 @@ The default setup leaves Ollama and existing clients unchanged on `http://<serve
 
 The script sets `OLLAMA_DASHBOARD_PORT=5111` and removes the old per-user `OLLAMA_HOST` override that moved Ollama to 11435. It does not stop or restart running apps. Restart Ollama after applying this setting if it was previously configured to use 11435. Choose another dashboard port with `.\configure_monitored_ollama_ports.ps1 -DashboardPort 5123`.
 
-The LAN monitoring proxy is enabled by default and can be turned off in **Ollama settings → Remote client monitoring**. To capture a LAN client's activity, set that client's Ollama API base URL to `http://<server-name-or-IP>:5111` (or the configured dashboard port). The dashboard proxy forwards supported Ollama and OpenAI-compatible routes to the Ollama server at `http://localhost:11434` and records chat/generation activity. Requests that continue to go directly to Ollama on port 11434 are not visible to the dashboard. Enable **Save and use conversation memory** to store and retrieve memory for successful dashboard and proxied client conversations. Allow the chosen dashboard port through the host's **Private** firewall profile for the local subnet, if needed:
+The LAN monitoring proxy is enabled by default and can be turned off in **Ollama settings → Remote client monitoring**. To capture a LAN client's activity, set that client's Ollama API base URL to the displayed **Ollama address for clients** (default `http://<server-name-or-IP>:5111`). For OpenAI-compatible clients, append `/v1`. The dashboard proxy forwards supported routes to the Ollama server at `http://localhost:11434` and records chat/generation activity. Requests that continue to go directly to Ollama on port 11434 are not visible to the dashboard. Enable **Save and use conversation memory** to store and retrieve memory for successful dashboard and proxied client conversations. Allow the chosen dashboard port through the host's **Private** firewall profile for the local subnet, if needed:
 
 ```powershell
 New-NetFirewallRule -DisplayName "Ollama Dashboard LAN Proxy" `
@@ -159,6 +161,7 @@ The Flask app serves the dashboard and exposes a small local API:
 | `/api/models` | `GET` | Installed model names |
 | `/api/settings` | `GET`, `POST` | Read or update the Ollama server connection settings |
 | `/api/settings/refresh-interval` | `POST` | Save the dashboard's automatic refresh interval |
+| `/api/settings/automation` | `POST` | Configure dashboard startup at sign-in and when Ollama becomes available |
 | `/api/memory/settings` | `GET`, `POST` | Read or update local conversation-memory settings and usage |
 | `/api/memory/clear` | `POST` | Delete all memories in the selected memory store |
 | `/api/metrics` | `GET` | Activity totals, per-model usage, and recent requests |

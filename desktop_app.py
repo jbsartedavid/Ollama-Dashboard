@@ -2,6 +2,7 @@ import logging
 import json
 import os
 import socket
+import sys
 import threading
 import urllib.error
 import urllib.request
@@ -11,22 +12,24 @@ from tkinter import Button, Label, StringVar, Tk, messagebox
 
 from werkzeug.serving import make_server
 
-from app import app
+from app import _fetch_json, app
 
 HOST = "127.0.0.1"
 BIND_HOST = "0.0.0.0"
 
 
 def _configured_port() -> int:
-    value = os.getenv("OLLAMA_DASHBOARD_PORT")
-    if value is None and os.name == "nt":
+    value = None
+    if os.name == "nt":
         import winreg
 
         try:
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
                 value, _ = winreg.QueryValueEx(key, "OLLAMA_DASHBOARD_PORT")
         except OSError:
-            value = None
+            pass
+    if value is None:
+        value = os.getenv("OLLAMA_DASHBOARD_PORT")
     return int(value or "5111")
 
 
@@ -190,5 +193,21 @@ def main() -> None:
     root.mainloop()
 
 
+def wait_for_ollama() -> None:
+    threading.Event().wait(5)
+    while True:
+        if _find_running_dashboard() is not None:
+            return
+        data, _, _ = _fetch_json("GET", "/api/version", timeout=3)
+        if data is not None:
+            if _find_running_dashboard() is None:
+                main()
+            return
+        threading.Event().wait(3)
+
+
 if __name__ == "__main__":
-    main()
+    if sys.argv[1:] == ["--wait-for-ollama"]:
+        wait_for_ollama()
+    else:
+        main()

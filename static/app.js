@@ -195,6 +195,8 @@ async function loadSettings() {
   document.getElementById('keepAliveInput').value = settings.keepAlive;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
   document.getElementById('clientProxyEnabled').checked = settings.gatewayEnabled;
+  document.getElementById('startAtSignIn').checked = settings.startAtSignIn;
+  document.getElementById('startWhenOllamaAvailable').checked = settings.startWhenOllamaAvailable;
   document.getElementById('remoteMonitoringStatus').textContent = settings.gatewayEnabled
     ? `Monitoring proxy is enabled at ${settings.clientGatewayUrl}. Clients must use this address; direct connections to Ollama on port 11434 bypass monitoring.`
     : 'Monitoring proxy is disabled. Enable it and point monitored clients at the address below.';
@@ -263,6 +265,32 @@ async function saveSettings(event) {
   } finally {
     saveButton.disabled = false;
     saveButton.innerHTML = 'Save connection settings <span aria-hidden="true">→</span>';
+  }
+}
+
+async function saveStartupSettings() {
+  const message = document.getElementById('startupSettingsMessage');
+  const button = document.getElementById('saveStartupSettingsBtn');
+  message.textContent = '';
+  message.classList.remove('error');
+  button.disabled = true;
+  button.textContent = 'Saving…';
+  try {
+    await getJson('/api/settings/automation', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        startAtSignIn: document.getElementById('startAtSignIn').checked,
+        startWhenOllamaAvailable: document.getElementById('startWhenOllamaAvailable').checked
+      })
+    });
+    message.textContent = 'Startup options saved. Changes apply at your next Windows sign-in.';
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add('error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Save startup options';
   }
 }
 
@@ -515,6 +543,7 @@ document.getElementById('refreshBtn').addEventListener('click', refreshDashboard
 document.getElementById('refreshModelsBtn').addEventListener('click', refreshHealth);
 settingsForm.addEventListener('submit', saveSettings);
 document.getElementById('memorySettingsForm').addEventListener('submit', saveMemorySettings);
+document.getElementById('saveStartupSettingsBtn').addEventListener('click', saveStartupSettings);
 document.getElementById('clearMemoryBtn').addEventListener('click', clearMemories);
 document.getElementById('copyGatewayUrlBtn').addEventListener('click', () =>
   copySettingValue(document.getElementById('clientGatewayUrl'), 'client URL'));
