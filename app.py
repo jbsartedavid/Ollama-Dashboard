@@ -16,7 +16,6 @@ from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 ENV_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
-ENV_DEFAULT_MODEL = os.getenv("OLLAMA_MODEL", "llama3.1")
 if getattr(sys, "frozen", False):
     data_directory = Path(os.getenv("LOCALAPPDATA", Path.home())) / "OllamaDashboard"
     data_directory.mkdir(parents=True, exist_ok=True)
@@ -159,6 +158,7 @@ def _initialize_db() -> None:
             )
             """
         )
+        connection.execute("DELETE FROM settings WHERE name = 'default_model'")
 
 
 def _get_setting(name: str, fallback: str) -> str:
@@ -176,25 +176,22 @@ def _get_api_key() -> str:
 def _get_ollama_config() -> dict[str, str]:
     return {
         "base_url": _get_setting("base_url", ENV_OLLAMA_BASE_URL),
-        "default_model": _get_setting("default_model", ENV_DEFAULT_MODEL),
         "keep_alive": _get_setting("keep_alive", "5m"),
     }
 
 
 def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
     base_url = body.get("baseUrl")
-    default_model = body.get("defaultModel")
     keep_alive = body.get("keepAlive", "5m")
     api_key = body.get("apiKey", "")
     clear_api_key = body.get("clearApiKey", False)
 
-    if not all(isinstance(value, str) for value in (base_url, default_model, keep_alive, api_key)):
-        return None, "Server URL, default model, keep-alive, and API key must be strings."
+    if not all(isinstance(value, str) for value in (base_url, keep_alive, api_key)):
+        return None, "Server URL, keep-alive, and API key must be strings."
     if not isinstance(clear_api_key, bool):
         return None, "clearApiKey must be a boolean."
 
     base_url = base_url.strip().rstrip("/")
-    default_model = default_model.strip()
     keep_alive = keep_alive.strip()
     api_key = api_key.strip()
 
@@ -213,8 +210,6 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
         valid_url = False
     if not valid_url or len(base_url) > 2048:
         return None, "Enter a valid HTTP or HTTPS Ollama server URL, without credentials or query parameters."
-    if not default_model or len(default_model) > 256 or any(char.isspace() for char in default_model):
-        return None, "Default model is required and must not contain whitespace."
     if not re.fullmatch(r"(?:-1|0|[1-9]\d*(?:ns|us|µs|ms|s|m|h)?)", keep_alive):
         return None, "Keep-alive must be -1, 0, or a duration such as 5m or 30s."
     if len(api_key) > 4096:
@@ -224,7 +219,6 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
 
     return {
         "base_url": base_url,
-        "default_model": default_model,
         "keep_alive": keep_alive,
         "api_key": api_key,
         "clear_api_key": clear_api_key,
@@ -239,7 +233,6 @@ def _save_ollama_config(values: dict[str, Any]) -> None:
             "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
             [
                 ("base_url", values["base_url"]),
-                ("default_model", values["default_model"]),
                 ("keep_alive", values["keep_alive"]),
             ],
         )
@@ -340,9 +333,7 @@ def list_models():
         return jsonify({"error": error}), status
 
     models = [item["name"] for item in data.get("models", []) if item.get("name")]
-    preferred_model = _get_ollama_config()["default_model"]
-    default_model = preferred_model if preferred_model in models else (models[0] if models else preferred_model)
-    return jsonify({"models": models, "defaultModel": default_model})
+    return jsonify({"models": models})
 
 
 @app.route("/api/settings", methods=["GET", "POST"])
@@ -357,7 +348,6 @@ def ollama_settings():
         return jsonify(
             {
                 "baseUrl": config["base_url"],
-                "defaultModel": config["default_model"],
                 "keepAlive": config["keep_alive"],
                 "apiKeyConfigured": api_key_configured,
             }
@@ -384,17 +374,19 @@ def generate_text():
         return jsonify({"error": "Request body must be a JSON object."}), 400
 
     raw_prompt = body.get("prompt", "")
-    config = _get_ollama_config()
-    raw_model = body.get("model", config["default_model"])
+    raw_model = body.get("model", "")
     if not isinstance(raw_prompt, str) or not isinstance(raw_model, str):
         return jsonify({"error": "Prompt and model must be strings."}), 400
 
     prompt = raw_prompt.strip()
-    model = raw_model.strip() or DEFAULT_MODEL
+    model = raw_model.strip()
 
     if not prompt:
         return jsonify({"error": "Prompt is required."}), 400
+    if not model:
+        return jsonify({"error": "Choose an installed model before generating."}), 400
 
+    config = _get_ollama_config()
     started_at = time.perf_counter()
     data, error, status = _fetch_json(
         "POST",

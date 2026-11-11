@@ -2,9 +2,9 @@
 
 # Ollama Dashboard
 
-**A local observability console for your Ollama server and model activity.**
+**A local observability console for your Ollama server and all its models.**
 
-Track requests, inspect responses, compare model usage, and check server health from one clean dashboard.
+Monitor the Ollama server, inventory, and loaded models together. Compare request activity by model without setting a preferred model.
 
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Flask](https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
@@ -16,7 +16,7 @@ Track requests, inspect responses, compare model usage, and check server health 
 
 ## At a glance
 
-| Model activity | Ollama server |
+| All-model activity | Ollama server |
 | --- | --- |
 | Request totals and success/failure counts | Connection status and API latency |
 | Recent prompts, responses, and errors | Ollama version and installed model inventory |
@@ -80,7 +80,7 @@ To rebuild from source, create `.venv`, install `requirements-build.txt`, and ru
 - **Generation metrics:** prompt tokens, generated tokens, and generation speed when Ollama reports token counts and timing.
 - **Model breakdown:** request, generated-token, and failure counts for each model used.
 - **Server status:** Ollama API reachability, API latency, server version, installed models, and currently loaded models.
-- **Connection settings:** configure the Ollama server URL, preferred model, model keep-alive duration, and optional bearer API key in the dashboard. On Windows, the key is encrypted with DPAPI for the current user and never returned to the browser.
+- **Connection settings:** configure the Ollama server URL, model keep-alive duration, and optional bearer API key in the dashboard. No model is preferred; all installed and loaded models are monitored together. On Windows, the key is encrypted with DPAPI for the current user and never returned to the browser.
 - **Local history:** source runs save request data in `dashboard.db` next to the app. The packaged Windows app stores it under `%LOCALAPPDATA%\OllamaDashboard`. Choose another location with `DASHBOARD_DATABASE`.
 
 The Ollama server status is refreshed every 10 seconds. This application does not collect host-wide CPU, GPU, or system memory metrics.
@@ -90,7 +90,6 @@ The Ollama server status is refreshed every 10 seconds. This application does no
 | Variable | Default | Description |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Base URL for the Ollama API |
-| `OLLAMA_MODEL` | `llama3.1` | Preferred default model when it is installed |
 | `DASHBOARD_DATABASE` | Project directory for source; `%LOCALAPPDATA%\OllamaDashboard` for the packaged app | SQLite file used for request history |
 
 These environment variables provide initial defaults; changes made in the dashboard are saved locally and take precedence. Configure remote endpoints with HTTPS. An API key is optional and is sent as an `Authorization: Bearer` header only to the configured Ollama server. Leave the key field blank to keep the saved key, or select **Remove saved API key** to delete it.
@@ -99,7 +98,6 @@ Example PowerShell configuration:
 
 ```powershell
 $env:OLLAMA_BASE_URL = "http://localhost:11434"
-$env:OLLAMA_MODEL = "qwen2.5-coder:latest"
 python app.py
 ```
 
@@ -110,7 +108,7 @@ The Flask app serves the dashboard and exposes a small local API:
 | Route | Method | Purpose |
 | --- | --- | --- |
 | `/api/health` | `GET` | Ollama status, latency, version, and model inventory |
-| `/api/models` | `GET` | Installed model names and the preferred default |
+| `/api/models` | `GET` | Installed model names |
 | `/api/settings` | `GET`, `POST` | Read or update the Ollama server connection settings |
 | `/api/metrics` | `GET` | Activity totals, per-model usage, and recent requests |
 | `/api/generate` | `POST` | Generate a response and record its metrics |

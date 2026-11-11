@@ -8,7 +8,6 @@ const settingsMessage = document.getElementById('settingsMessage');
 const apiKeyInput = document.getElementById('ollamaApiKey');
 const clearApiKeyInput = document.getElementById('clearApiKey');
 const numberFormat = new Intl.NumberFormat();
-let preferredModel = '';
 
 function formatDuration(milliseconds) {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '—';
@@ -49,7 +48,7 @@ async function getJson(url, options) {
 
 function renderModels(models, runningModels) {
   const runningNames = new Set(runningModels.map((model) => model.name));
-  const selectValue = modelSelect.value || preferredModel;
+  const selectValue = modelSelect.value;
   modelSelect.replaceChildren();
 
   if (models.length === 0) {
@@ -58,13 +57,19 @@ function renderModels(models, runningModels) {
     option.value = '';
     modelSelect.appendChild(option);
   } else {
+    const placeholder = document.createElement('option');
+    placeholder.textContent = 'Select a model for generation';
+    placeholder.value = '';
+    placeholder.disabled = true;
+    placeholder.selected = true;
+    modelSelect.appendChild(placeholder);
     models.forEach((model) => {
       const option = document.createElement('option');
       option.value = model.name;
       option.textContent = model.name;
-      option.selected = model.name === selectValue;
       modelSelect.appendChild(option);
     });
+    if (models.some((model) => model.name === selectValue)) modelSelect.value = selectValue;
   }
 
   document.getElementById('modelsList').innerHTML = models.length
@@ -110,9 +115,7 @@ async function refreshHealth() {
 async function loadSettings() {
   const settings = await getJson('/api/settings');
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
-  document.getElementById('defaultModelInput').value = settings.defaultModel;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
-  preferredModel = settings.defaultModel;
   apiKeyInput.value = '';
   apiKeyInput.placeholder = settings.apiKeyConfigured ? 'Saved securely — leave blank to keep' : 'Not configured';
   document.getElementById('apiKeyState').textContent = settings.apiKeyConfigured
@@ -135,7 +138,6 @@ async function saveSettings(event) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         baseUrl: document.getElementById('ollamaBaseUrl').value,
-        defaultModel: document.getElementById('defaultModelInput').value,
         keepAlive: document.getElementById('keepAliveInput').value,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
@@ -260,6 +262,10 @@ async function generateText() {
   generateError.textContent = '';
   if (!prompt) {
     generateError.textContent = 'Enter a prompt before generating.';
+    return;
+  }
+  if (!model) {
+    generateError.textContent = 'Choose a model to generate a response. Monitoring includes all models.';
     return;
   }
 
