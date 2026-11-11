@@ -67,7 +67,7 @@ To add a Desktop shortcut to the executable, run:
 .\create_desktop_shortcut.ps1
 ```
 
-Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. If a compatible dashboard is already running, it opens that instance; if the default port is occupied by another app or an older dashboard, it chooses an available port. The shortcut does not configure automatic startup when you sign in to Windows.
+Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. If a compatible dashboard is already running anywhere in the configured port range, it opens that instance. If Ollama or another app already owns the configured dashboard port, the dashboard skips busy ports and starts on the next available one; you do not need to stop Ollama. The selected port is shown in the control window and dashboard. The shortcut does not configure automatic startup when you sign in to Windows.
 
 The executable keeps activity data and diagnostic logs under `%LOCALAPPDATA%\OllamaDashboard`; it does not write into the installation folder.
 
@@ -114,7 +114,7 @@ Port takeover automatically enables the proxy. OmniRoute can use its OpenAI-comp
 
 ### Use the dashboard's default gateway port
 
-If you do not move Ollama off port 11434, use the displayed **Ollama address for clients** instead (usually port 5000-5020) and configure clients to use that URL. Apply a matching Private-profile/local-subnet firewall rule for the displayed port. Requests sent directly to the Ollama server port will not be visible to this dashboard.
+If Ollama owns port 11434, the dashboard automatically uses the next available port in its configured range (for example 11435 or 11436). Use the displayed **Ollama address for clients** in clients you want monitored and allow that port through the Private-profile/local-subnet firewall. Requests sent directly to Ollama on port 11434 still work normally, but bypass dashboard monitoring; the same TCP port cannot be shared by both Ollama and the dashboard. The dashboard control window shows the selected address.
 
 Example Ollama API request from a client (for the port-11434 takeover setup):
 
@@ -179,7 +179,8 @@ The Flask app serves the dashboard and exposes a small local API:
 - **GPU metrics unavailable:** NVIDIA metrics require a working NVIDIA driver and `nvidia-smi` on the dashboard host. CPU, memory, pagefile, and disk metrics remain available independently.
 - **Shortcut does not start:** run `.\start_dashboard.ps1` directly to see any PowerShell error. Packaged-app diagnostics are written to `%LOCALAPPDATA%\OllamaDashboard\desktop.log`.
 - **Executable build fails:** make sure `.venv` is active and install build dependencies with `python -m pip install -r requirements-build.txt`.
-- **Port 5000 is already in use:** the desktop app automatically checks the next available local ports. For source runs, set `OLLAMA_DASHBOARD_PORT` before starting `desktop_app.py`.
+- **Ollama and dashboard conflict on port 11434:** the desktop app now leaves Ollama running and starts the dashboard on the next available port. Keep Ollama clients on port 11434 for direct access, or change monitored clients to the dashboard's displayed address. Both apps cannot listen on the same address and port at once.
+- **Dashboard port range is full:** the desktop app checks the configured port and the next 20 ports. Set `OLLAMA_DASHBOARD_PORT` to a free port with available ports nearby, then restart the dashboard.
 - **Client cannot connect:** confirm the displayed Ollama address for clients and port, allow the app on the host's Private firewall profile, and keep the Ollama Desktop app from reclaiming port 11434. Clients must connect from a private/link-local address; dashboard management APIs intentionally reject LAN clients.
 
 ## Project layout

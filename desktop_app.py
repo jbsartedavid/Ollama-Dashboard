@@ -31,24 +31,35 @@ def _configured_port() -> int:
 
 
 PORT = _configured_port()
-DASHBOARD_URL = f"http://{HOST}:{PORT}/"
 
 
-def _is_dashboard_running() -> bool:
+def _dashboard_is_running_on(port: int) -> bool:
+    dashboard_url = f"http://{HOST}:{port}/"
     try:
-        with urllib.request.urlopen(DASHBOARD_URL, timeout=2) as response:
-            is_dashboard = response.status == 200 and b"<title>Ollama Dashboard</title>" in response.read(8192)
+        with urllib.request.urlopen(dashboard_url, timeout=0.5) as response:
+            is_dashboard = (
+                response.status == 200
+                and b"<title>Ollama Dashboard</title>" in response.read(8192)
+            )
         if not is_dashboard:
             return False
-        with urllib.request.urlopen(f"{DASHBOARD_URL}api/settings", timeout=2) as response:
+        with urllib.request.urlopen(f"{dashboard_url}api/settings", timeout=0.5) as response:
             settings = json.loads(response.read().decode("utf-8"))
             return (
                 response.status == 200
                 and "clientGatewayUrl" in settings
                 and "gatewayEnabled" in settings
             )
-    except (OSError, urllib.error.URLError):
+    except (OSError, urllib.error.URLError, json.JSONDecodeError):
         return False
+
+
+def _find_running_dashboard() -> int | None:
+    last_port = min(PORT + 20, 65535)
+    for port in range(PORT, last_port + 1):
+        if _dashboard_is_running_on(port):
+            return port
+    return None
 
 
 def _find_available_port() -> int:
@@ -57,11 +68,6 @@ def _find_available_port() -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.settimeout(0.2)
             if probe.connect_ex((HOST, port)) == 0:
-                if port == PORT == 11434:
-                    raise OSError(
-                        "Port 11434 is reserved for the Ollama monitoring proxy but is already in use. "
-                        "Stop the Ollama Desktop server before starting the dashboard."
-                    )
                 continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
             try:
@@ -152,15 +158,22 @@ def main() -> None:
     ).pack(side="left", padx=6)
 
     try:
-        if _is_dashboard_running():
-            status.set("Dashboard is already running.")
+        running_port = _find_running_dashboard()
+        if running_port is not None:
+            dashboard_url = f"http://{HOST}:{running_port}/"
+            status.set(f"Dashboard is already running at {dashboard_url}")
         else:
             selected_port = _find_available_port()
             dashboard_url = f"http://{HOST}:{selected_port}/"
             server = make_server(BIND_HOST, selected_port, app, threaded=True)
             owns_server = True
             threading.Thread(target=server.serve_forever, daemon=True).start()
-            status.set(f"Running locally at {dashboard_url}")
+            if selected_port == PORT:
+                status.set(f"Running locally at {dashboard_url}")
+            else:
+                status.set(
+                    f"Port {PORT} is busy. Dashboard is running at {dashboard_url}"
+                )
         open_dashboard()
     except OSError as exc:
         logging.exception("Could not start dashboard server")
@@ -168,7 +181,8 @@ def main() -> None:
         messagebox.showerror(
             "Ollama Dashboard",
             "Could not start the local dashboard server.\n\n"
-            "Close other local services or set OLLAMA_DASHBOARD_PORT to an available port.\n\n"
+            "No free port was found in the configured range. Set OLLAMA_DASHBOARD_PORT "
+            "to a port with available ports nearby.\n\n"
             f"Details: {exc}",
             parent=root,
         )
