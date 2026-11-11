@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1020" />
+    <title>Ollama Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">O</div>
+          <div>
+            <p class="eyebrow">Local AI observability</p>
+            <h1>Ollama Dashboard</h1>
+          </div>
+        </div>
+        <div class="header-right">
+          <span id="lastUpdated" class="last-updated">Connecting…</span>
+          <span id="statusBadge" class="status status-offline"><span class="status-dot"></span>Checking</span>
+          <button id="refreshBtn" class="icon-button" title="Refresh dashboard" aria-label="Refresh dashboard">↻</button>
+        </div>
+      </header>
+
+      <main>
+        <section class="metrics-grid" aria-label="Model activity metrics">
+          <article class="metric-card">
+            <span class="metric-label">Total requests</span>
+            <strong id="totalRequests" class="metric-value">—</strong>
+            <span id="requestSuccess" class="metric-detail">All-time activity</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Avg. response time</span>
+            <strong id="avgLatency" class="metric-value">—</strong>
+            <span class="metric-detail">Dashboard round trip</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Generation speed</span>
+            <strong id="tokensPerSecond" class="metric-value">—</strong>
+            <span class="metric-detail">Tokens per second</span>
+          </article>
+          <article class="metric-card">
+            <span class="metric-label">Tokens processed</span>
+            <strong id="tokenCount" class="metric-value">—</strong>
+            <span id="tokenBreakdown" class="metric-detail">Prompt — · Generated —</span>
+          </article>
+        </section>
+
+        <section class="main-grid">
+          <div class="primary-column">
+            <section class="panel activity-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Live activity</p>
+                  <h2>Recent requests</h2>
+                </div>
+                <span id="requestCount" class="subtle-badge">0 requests</span>
+              </div>
+              <div id="activityList" class="activity-list">
+                <div class="empty-state">No model activity yet. Send a prompt to begin monitoring.</div>
+              </div>
+            </section>
+
+            <section class="panel model-activity-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Usage breakdown</p>
+                  <h2>Activity by model</h2>
+                </div>
+              </div>
+              <div id="modelActivity" class="model-activity">
+                <div class="muted-copy">No model activity recorded yet.</div>
+              </div>
+            </section>
+
+            <section class="panel response-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Response monitor</p>
+                  <h2>Latest response</h2>
+                </div>
+                <span id="responseModel" class="subtle-badge">No response</span>
+              </div>
+              <div id="responseMetrics" class="response-metrics"></div>
+              <div id="latestResponse" class="latest-response empty-state">
+                Responses from recent requests will appear here.
+              </div>
+            </section>
+          </div>
+
+          <aside class="side-column">
+            <section class="panel server-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Infrastructure</p>
+                  <h2>Server status</h2>
+                </div>
+              </div>
+              <div class="server-endpoint">
+                <span class="server-icon" aria-hidden="true">⌁</span>
+                <div><span class="server-label">Ollama API</span><strong id="serverEndpoint">Checking…</strong></div>
+              </div>
+              <div class="server-stats">
+                <div><span>API latency</span><strong id="serverLatency">—</strong></div>
+                <div><span>Version</span><strong id="serverVersion">—</strong></div>
+                <div><span>Installed models</span><strong id="installedModels">—</strong></div>
+                <div><span>Loaded in memory</span><strong id="loadedModels">—</strong></div>
+              </div>
+              <div class="subsection-title">Loaded models</div>
+              <div id="runningModels" class="model-list">
+                <div class="muted-copy">Checking running models…</div>
+              </div>
+            </section>
+
+            <section class="panel model-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Inventory</p>
+                  <h2>Installed models</h2>
+                </div>
+                <button id="refreshModelsBtn" class="text-button">Refresh</button>
+              </div>
+              <div id="modelsList" class="model-list">
+                <div class="muted-copy">Loading models…</div>
+              </div>
+            </section>
+
+            <section class="panel compose-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Try a prompt</p>
+                  <h2>Generate response</h2>
+                </div>
+              </div>
+              <label for="modelSelect">Model</label>
+              <select id="modelSelect"></select>
+              <label for="promptInput">Prompt</label>
+              <textarea id="promptInput" rows="4" placeholder="Enter a prompt to monitor…"></textarea>
+              <button id="generateBtn" class="primary-button">Generate response <span aria-hidden="true">→</span></button>
+              <p id="generateError" class="form-error" role="alert"></p>
+            </section>
+          </aside>
+        </section>
+
+        <footer class="footer">
+          <span>Metrics are collected from requests made through this dashboard.</span>
+          <span id="refreshInterval">Auto-refresh every 10 seconds</span>
+        </footer>
+      </main>
+    </div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
