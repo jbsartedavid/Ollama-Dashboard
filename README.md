@@ -59,7 +59,7 @@ From PowerShell in the project directory, run:
 .\build_windows.ps1
 ```
 
-The standalone, windowed executable is created at `release\OllamaDashboard.exe`. It includes the dashboard and its Python dependencies; Python does not need to be installed on a computer that runs the executable. Ollama must still be installed and running.
+The standalone, windowed executable is created at `release\OllamaDashboard.exe` with a custom Ollama Dashboard icon. It includes the dashboard and its Python dependencies; Python does not need to be installed on a computer that runs the executable. Ollama must still be installed and running.
 
 To add a Desktop shortcut to the executable, run:
 

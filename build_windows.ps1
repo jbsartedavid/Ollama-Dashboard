@@ -14,6 +14,10 @@ if ($LASTEXITCODE -ne 0) {
 
 $releaseDirectory = Join-Path $projectDirectory 'release'
 $buildDirectory = Join-Path $projectDirectory 'build'
+$icon = Join-Path $projectDirectory 'assets\ollama-dashboard.ico'
+if (-not (Test-Path -LiteralPath $icon)) {
+    throw "Windows icon not found at $icon."
+}
 New-Item -ItemType Directory -Force -Path $releaseDirectory, $buildDirectory | Out-Null
 
 & $python -m PyInstaller `
@@ -22,6 +26,7 @@ New-Item -ItemType Directory -Force -Path $releaseDirectory, $buildDirectory | O
     --onefile `
     --windowed `
     --name OllamaDashboard `
+    --icon $icon `
     --distpath $releaseDirectory `
     --workpath $buildDirectory `
     --specpath $buildDirectory `
