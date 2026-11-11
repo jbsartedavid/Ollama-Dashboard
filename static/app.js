@@ -5,6 +5,7 @@ const generateBtn = document.getElementById('generateBtn');
 const generateError = document.getElementById('generateError');
 const settingsForm = document.getElementById('settingsForm');
 const settingsMessage = document.getElementById('settingsMessage');
+const gatewayKeyMessage = document.getElementById('gatewayKeyMessage');
 const apiKeyInput = document.getElementById('ollamaApiKey');
 const clearApiKeyInput = document.getElementById('clearApiKey');
 const numberFormat = new Intl.NumberFormat();
@@ -116,6 +117,21 @@ async function loadSettings() {
   const settings = await getJson('/api/settings');
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
+  document.getElementById('gatewayEnabled').checked = settings.gatewayEnabled;
+  document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
+  document.getElementById('clientAccessKey').value = '';
+  document.getElementById('clientAccessKey').type = 'password';
+  document.getElementById('clientAccessKey').placeholder = settings.clientAccessKeyConfigured
+    ? 'Key saved securely — rotate to issue a new key'
+    : 'Generate a key to enable client access';
+  document.getElementById('generateGatewayKeyBtn').disabled = false;
+  document.getElementById('copyGatewayKeyBtn').disabled = true;
+  if (gatewayKeyMessage.dataset.generated !== 'true') {
+    gatewayKeyMessage.textContent = settings.clientAccessKeyConfigured
+      ? 'A client key is configured. Generate/rotate it to display a new key. The current key cannot be viewed again.'
+      : 'Generate a key, copy it now, then enable the proxy and save. Use Authorization: Bearer <key> on clients.';
+  }
+  gatewayKeyMessage.classList.remove('error');
   apiKeyInput.value = '';
   apiKeyInput.placeholder = settings.apiKeyConfigured ? 'Saved securely — leave blank to keep' : 'Not configured';
   document.getElementById('apiKeyState').textContent = settings.apiKeyConfigured
@@ -139,12 +155,14 @@ async function saveSettings(event) {
       body: JSON.stringify({
         baseUrl: document.getElementById('ollamaBaseUrl').value,
         keepAlive: document.getElementById('keepAliveInput').value,
+        gatewayEnabled: document.getElementById('gatewayEnabled').checked,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
       })
     });
     if (!saved.saved) throw new Error('Settings were not saved.');
     settingsMessage.textContent = 'Settings saved.';
+    gatewayKeyMessage.dataset.generated = 'false';
     modelSelect.value = '';
     await loadSettings();
     await refreshDashboard();
@@ -155,6 +173,48 @@ async function saveSettings(event) {
     saveButton.disabled = false;
     saveButton.innerHTML = 'Save connection settings <span aria-hidden="true">→</span>';
   }
+}
+
+async function generateGatewayKey() {
+  const button = document.getElementById('generateGatewayKeyBtn');
+  gatewayKeyMessage.classList.remove('error');
+  gatewayKeyMessage.textContent = 'Generating a new key; any previous client key will stop working…';
+  button.disabled = true;
+  try {
+    const data = await getJson('/api/settings/gateway-key', { method: 'POST' });
+    document.getElementById('clientAccessKey').type = 'text';
+    document.getElementById('clientAccessKey').value = data.clientAccessKey;
+    document.getElementById('copyGatewayKeyBtn').disabled = false;
+    document.getElementById('gatewayEnabled').checked = true;
+    gatewayKeyMessage.textContent = 'New key generated. Copy it now; it will not be shown again after reload. Save settings to enable the proxy.';
+    gatewayKeyMessage.dataset.generated = 'true';
+  } catch (error) {
+    gatewayKeyMessage.textContent = error.message;
+    gatewayKeyMessage.classList.add('error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function copySettingValue(input, label) {
+  if (!input.value) {
+    gatewayKeyMessage.textContent = `No ${label} is available to copy.`;
+    gatewayKeyMessage.classList.add('error');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(input.value);
+  } catch {
+    input.focus();
+    input.select();
+    if (!document.execCommand('copy')) {
+      gatewayKeyMessage.textContent = `Could not copy the ${label}; select and copy it manually.`;
+      gatewayKeyMessage.classList.add('error');
+      return;
+    }
+  }
+  gatewayKeyMessage.classList.remove('error');
+  gatewayKeyMessage.textContent = `${label === 'client key' ? 'Client key' : 'Client URL'} copied.`;
 }
 
 function renderLatestResponse(activity) {
@@ -210,7 +270,7 @@ function renderActivity(recent) {
       <time class="activity-time">${escapeHtml(timeLabel)}</time>
       <span class="activity-model" title="${escapeHtml(item.model)}">${escapeHtml(item.model)}</span>
       <span class="activity-prompt" title="${escapeHtml(item.prompt)}">${escapeHtml(item.prompt)}</span>
-      <div class="activity-meta"><i class="result-status ${item.status === 'error' ? 'failed' : ''}"></i><span>${escapeHtml(tokenLabel)}</span></div>
+      <div class="activity-meta"><i class="result-status ${item.status === 'error' ? 'failed' : ''}"></i><span>${escapeHtml(tokenLabel)}</span><span class="activity-origin" title="${item.client_ip ? 'Client IP' : 'Request source'}">${item.client_ip ? `Client ${escapeHtml(item.client_ip)}` : 'Dashboard'}</span></div>
     </article>`;
   }).join('');
   renderLatestResponse(recent.find((item) => item.status === 'success') || recent[0]);
@@ -290,6 +350,11 @@ async function generateText() {
 document.getElementById('refreshBtn').addEventListener('click', refreshDashboard);
 document.getElementById('refreshModelsBtn').addEventListener('click', refreshHealth);
 settingsForm.addEventListener('submit', saveSettings);
+document.getElementById('generateGatewayKeyBtn').addEventListener('click', generateGatewayKey);
+document.getElementById('copyGatewayUrlBtn').addEventListener('click', () =>
+  copySettingValue(document.getElementById('clientGatewayUrl'), 'client URL'));
+document.getElementById('copyGatewayKeyBtn').addEventListener('click', () =>
+  copySettingValue(document.getElementById('clientAccessKey'), 'client key'));
 clearApiKeyInput.addEventListener('change', () => {
   apiKeyInput.disabled = clearApiKeyInput.checked;
   if (clearApiKeyInput.checked) apiKeyInput.value = '';

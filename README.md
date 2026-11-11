@@ -24,7 +24,7 @@ Monitor the Ollama server, inventory, and loaded models together. Compare reques
 | Prompt and generated token counts | Automatic status refresh every 10 seconds |
 | Tokens per second and per-model usage | |
 
-Activity is stored in a local SQLite database and remains available after restarting the dashboard. The dashboard only measures requests sent **through the dashboard**; it cannot see requests made directly to Ollama by other applications.
+Activity is stored in a local SQLite database and remains available after restarting the dashboard. The dashboard can record its own generations and client generation/chat requests routed through its authenticated Ollama proxy. Direct client connections to Ollama bypass the dashboard and are not recorded.
 
 ## Get started
 
@@ -80,10 +80,41 @@ To rebuild from source, create `.venv`, install `requirements-build.txt`, and ru
 - **Generation metrics:** prompt tokens, generated tokens, and generation speed when Ollama reports token counts and timing.
 - **Model breakdown:** request, generated-token, and failure counts for each model used.
 - **Server status:** Ollama API reachability, API latency, server version, installed models, and currently loaded models.
-- **Connection settings:** configure the Ollama server URL, model keep-alive duration, and optional bearer API key in the dashboard. No model is preferred; all installed and loaded models are monitored together. On Windows, the key is encrypted with DPAPI for the current user and never returned to the browser.
+- **Connection settings:** configure the Ollama server URL, model keep-alive duration, and optional upstream bearer API key in the dashboard. No model is preferred; all installed and loaded models are monitored together. On Windows, keys are encrypted with DPAPI for the current user.
+- **Remote clients:** enable the authenticated network proxy, generate a client access key, and point clients to the displayed Ollama-compatible server URL. Proxied `api/generate` and `api/chat` requests are recorded with the client IP, including streamed responses.
 - **Local history:** source runs save request data in `dashboard.db` next to the app. The packaged Windows app stores it under `%LOCALAPPDATA%\OllamaDashboard`. Choose another location with `DASHBOARD_DATABASE`.
 
 The Ollama server status is refreshed every 10 seconds. This application does not collect host-wide CPU, GPU, or system memory metrics.
+
+## Monitor clients on your LAN
+
+The desktop app normally serves its management dashboard only on the host's loopback interface. The **authenticated network proxy** is the exception: it accepts Ollama API traffic from other computers when enabled. The dashboard UI and settings remain inaccessible from other computers.
+
+1. On the Ollama host, open **Ollama settings**, generate a client access key, copy it, enable the proxy, and save settings.
+2. Allow the desktop app through Windows Defender Firewall on the **Private** network profile. If Windows does not show an allow prompt, run this in an elevated PowerShell window; it limits inbound access to the local subnet and Private profile:
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "Ollama Dashboard LAN Proxy" `
+     -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5000-5020 `
+     -RemoteAddress LocalSubnet -Profile Private
+   ```
+
+   Do not expose the app on a Public profile.
+3. On each client, set its Ollama API host to the displayed **Client Ollama URL** (for example `http://192.168.1.20:5000`) and send `Authorization: Bearer <client-key>` with each request.
+4. Send normal Ollama `/api/generate` or `/api/chat` requests to that host. Requests and responses will appear in dashboard activity.
+
+Example PowerShell request from a client:
+
+```powershell
+$headers = @{ Authorization = "Bearer <client-key>" }
+$body = @{ model = "qwen2.5-coder:latest"; prompt = "Say hello"; stream = $false } | ConvertTo-Json
+Invoke-RestMethod -Uri "http://192.168.1.20:5000/api/generate" `
+  -Method Post -Headers $headers -ContentType "application/json" -Body $body
+```
+
+Replace the example address, model, and key with the values for your setup. The proxy also forwards other supported Ollama API routes, but only generation and chat requests are added to response history. All client requests must carry the generated key. Generate a replacement key to revoke the previous one.
+
+**Network security:** the client key is sent to the proxy as a bearer token. Use this feature only on a trusted private LAN or VPN; plain HTTP does not encrypt the token in transit. For untrusted networks, place the proxy behind a properly configured HTTPS reverse proxy/VPN. The access key is encrypted at rest with Windows DPAPI.
 
 ## Configuration
 
@@ -112,6 +143,7 @@ The Flask app serves the dashboard and exposes a small local API:
 | `/api/settings` | `GET`, `POST` | Read or update the Ollama server connection settings |
 | `/api/metrics` | `GET` | Activity totals, per-model usage, and recent requests |
 | `/api/generate` | `POST` | Generate a response and record its metrics |
+| `/api/*` (from LAN) | Ollama methods | Authenticated client proxy to the configured Ollama server; management APIs remain loopback-only |
 
 ## Troubleshooting
 
@@ -120,6 +152,7 @@ The Flask app serves the dashboard and exposes a small local API:
 - **Shortcut does not start:** run `.\start_dashboard.ps1` directly to see any PowerShell error. Packaged-app diagnostics are written to `%LOCALAPPDATA%\OllamaDashboard\desktop.log`.
 - **Executable build fails:** make sure `.venv` is active and install build dependencies with `python -m pip install -r requirements-build.txt`.
 - **Port 5000 is already in use:** the desktop app automatically checks the next available local ports. For source runs, set `OLLAMA_DASHBOARD_PORT` before starting `desktop_app.py`.
+- **Client cannot connect:** confirm the displayed client URL and port, allow the app on the host's Private firewall profile, enable the proxy, and include the exact bearer key. Dashboard management APIs intentionally reject LAN clients.
 
 ## Project layout
 

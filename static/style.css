@@ -133,6 +133,7 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.02em; }
 .activity-prompt { color: var(--muted); font-size: 11px; }
 .activity-meta { display: flex; justify-content: flex-end; align-items: center; gap: 10px; white-space: nowrap; }
 .activity-meta span { color: var(--muted); font-size: 10px; }
+.activity-meta .activity-origin { color: #74839a; font-size: 9px; }
 .result-status { width: 7px; height: 7px; border-radius: 50%; background: var(--success); }
 .result-status.failed { background: var(--error); }
 .empty-state, .muted-copy { padding: 20px 6px; color: var(--muted); font-size: 12px; }
@@ -210,6 +211,21 @@ textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
 .optional-label { color: #738096; font-weight: 400; }
 .checkbox-label { display: flex; align-items: center; gap: 7px; margin-top: 11px; color: var(--muted); font-size: 10px; }
 .checkbox-label input { accent-color: var(--accent); }
+.gateway-toggle { padding: 9px 10px; border: 1px solid var(--border); border-radius: 7px; background: rgba(7, 11, 18, 0.45); }
+.gateway-divider { height: 1px; margin: 18px 0 14px; background: var(--border); }
+.warning-copy { color: #e9b56b; }
+.secondary-button {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #1b2740;
+  color: #d3dcec;
+  cursor: pointer;
+  font-size: 10px;
+}
+.secondary-button:hover { border-color: rgba(163, 230, 53, 0.45); color: var(--accent); }
 .form-message { min-height: 0; margin: 0; color: var(--success); font-size: 10px; }
 .form-message:not(:empty) { margin-top: 9px; }
 .form-message.error { color: var(--error); }

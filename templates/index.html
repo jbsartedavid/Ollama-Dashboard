@@ -116,6 +116,23 @@
                   Remove saved API key
                 </label>
 
+                <div class="gateway-divider"></div>
+                <p class="subsection-title">Remote client monitoring</p>
+                <p class="field-help">Route client Ollama requests through this dashboard to record activity.</p>
+                <label class="checkbox-label gateway-toggle" for="gatewayEnabled">
+                  <input id="gatewayEnabled" type="checkbox" />
+                  Enable authenticated network proxy
+                </label>
+                <label for="clientGatewayUrl">Client Ollama URL</label>
+                <input id="clientGatewayUrl" type="text" readonly />
+                <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy client URL</button>
+                <label for="clientAccessKey">Client access key</label>
+                <input id="clientAccessKey" type="password" readonly placeholder="Generate a key to enable client access" />
+                <button id="generateGatewayKeyBtn" class="secondary-button" type="button">Generate / rotate client key</button>
+                <button id="copyGatewayKeyBtn" class="secondary-button" type="button" disabled>Copy client key</button>
+                <p id="gatewayKeyMessage" class="field-help" role="status">Generate and copy a key, enable the proxy, then save. Clients must use Authorization: Bearer &lt;key&gt;.</p>
+                <p class="field-help warning-copy">Use only on a trusted private network or VPN. HTTP does not encrypt client keys in transit; never expose this proxy directly to the public internet.</p>
+
                 <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
                 <p id="settingsMessage" class="form-message" role="status"></p>
               </form>
@@ -175,7 +192,7 @@
         </section>
 
         <footer class="footer">
-          <span>Metrics are collected from requests made through this dashboard.</span>
+          <span>Metrics cover dashboard generations and authenticated client traffic routed through the proxy.</span>
           <span id="refreshInterval">Auto-refresh every 10 seconds</span>
         </footer>
       </main>

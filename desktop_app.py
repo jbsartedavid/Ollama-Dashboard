@@ -1,4 +1,5 @@
 import logging
+import json
 import os
 import socket
 import threading
@@ -13,6 +14,7 @@ from werkzeug.serving import make_server
 from app import app
 
 HOST = "127.0.0.1"
+BIND_HOST = "0.0.0.0"
 PORT = int(os.getenv("OLLAMA_DASHBOARD_PORT", "5000"))
 DASHBOARD_URL = f"http://{HOST}:{PORT}/"
 
@@ -24,7 +26,12 @@ def _is_dashboard_running() -> bool:
         if not is_dashboard:
             return False
         with urllib.request.urlopen(f"{DASHBOARD_URL}api/settings", timeout=2) as response:
-            return response.status == 200
+            settings = json.loads(response.read().decode("utf-8"))
+            return (
+                response.status == 200
+                and "clientGatewayUrl" in settings
+                and "gatewayEnabled" in settings
+            )
     except (OSError, urllib.error.URLError):
         return False
 
@@ -38,7 +45,7 @@ def _find_available_port() -> int:
                 continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
             try:
-                candidate.bind((HOST, port))
+                candidate.bind((BIND_HOST, port))
                 return port
             except OSError:
                 continue
@@ -130,7 +137,7 @@ def main() -> None:
         else:
             selected_port = _find_available_port()
             dashboard_url = f"http://{HOST}:{selected_port}/"
-            server = make_server(HOST, selected_port, app, threaded=True)
+            server = make_server(BIND_HOST, selected_port, app, threaded=True)
             owns_server = True
             threading.Thread(target=server.serve_forever, daemon=True).start()
             status.set(f"Running locally at {dashboard_url}")
