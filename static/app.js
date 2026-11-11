@@ -195,6 +195,10 @@ async function loadSettings() {
   document.getElementById('keepAliveInput').value = settings.keepAlive;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
   document.getElementById('clientProxyEnabled').checked = settings.gatewayEnabled;
+  document.getElementById('clientAuthRequired').checked = settings.gatewayAuthRequired;
+  document.getElementById('clientAccessKeyState').textContent = settings.clientAccessKeyConfigured
+    ? 'A client API key is configured. The key itself is never returned after generation.'
+    : 'No client API key is configured.';
   document.getElementById('startAtSignIn').checked = settings.startAtSignIn;
   document.getElementById('startWhenOllamaAvailable').checked = settings.startWhenOllamaAvailable;
   document.getElementById('remoteMonitoringStatus').textContent = settings.gatewayEnabled
@@ -250,6 +254,7 @@ async function saveSettings(event) {
         baseUrl: document.getElementById('ollamaBaseUrl').value,
         keepAlive: document.getElementById('keepAliveInput').value,
         gatewayEnabled: document.getElementById('clientProxyEnabled').checked,
+        gatewayAuthRequired: document.getElementById('clientAuthRequired').checked,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
       })
@@ -265,6 +270,38 @@ async function saveSettings(event) {
   } finally {
     saveButton.disabled = false;
     saveButton.innerHTML = 'Save connection settings <span aria-hidden="true">→</span>';
+  }
+}
+
+async function generateClientAccessKey() {
+  const message = document.getElementById('clientAccessKeyMessage');
+  const button = document.getElementById('generateClientAccessKeyBtn');
+  message.textContent = '';
+  message.classList.remove('error');
+  try {
+    const settings = await getJson('/api/settings');
+    if (settings.gatewayAuthRequired && settings.clientAccessKeyConfigured
+        && !window.confirm('Replace the current client API key? Existing clients will need the new key.')) {
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'Generating…';
+    const result = await getJson('/api/settings/gateway-key', { method: 'POST' });
+    document.getElementById('generatedClientAccessKey').value = result.clientAccessKey;
+    document.getElementById('generatedClientKeyContainer').hidden = false;
+    document.getElementById('clientAuthRequired').checked = true;
+    document.getElementById('clientProxyEnabled').checked = true;
+    document.getElementById('clientAccessKeyState').textContent =
+      'A client API key is configured and required for remote proxy requests.';
+    document.getElementById('remoteMonitoringStatus').textContent =
+      `Monitoring proxy is enabled at ${document.getElementById('clientGatewayUrl').value}. Clients must use this address; direct connections to Ollama on port 11434 bypass dashboard history and memory.`;
+    message.textContent = 'Client API key generated, required, and saved. Copy it into OmniRoute now; it will not be shown again.';
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add('error');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'Generate and require client API key';
   }
 }
 
@@ -544,9 +581,12 @@ document.getElementById('refreshModelsBtn').addEventListener('click', refreshHea
 settingsForm.addEventListener('submit', saveSettings);
 document.getElementById('memorySettingsForm').addEventListener('submit', saveMemorySettings);
 document.getElementById('saveStartupSettingsBtn').addEventListener('click', saveStartupSettings);
+document.getElementById('generateClientAccessKeyBtn').addEventListener('click', generateClientAccessKey);
 document.getElementById('clearMemoryBtn').addEventListener('click', clearMemories);
 document.getElementById('copyGatewayUrlBtn').addEventListener('click', () =>
   copySettingValue(document.getElementById('clientGatewayUrl'), 'client URL'));
+document.getElementById('copyClientAccessKeyBtn').addEventListener('click', () =>
+  copySettingValue(document.getElementById('generatedClientAccessKey'), 'client API key'));
 document.getElementById('refreshInterval').addEventListener('change', saveRefreshInterval);
 clearApiKeyInput.addEventListener('change', () => {
   apiKeyInput.disabled = clearApiKeyInput.checked;

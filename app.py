@@ -1431,6 +1431,9 @@ def clear_memory():
 
 @app.route("/api/settings/gateway-key", methods=["POST"])
 def generate_gateway_key():
+    if not _is_loopback_request():
+        return jsonify({"error": "Client API keys can be managed only on the dashboard host."}), 403
+
     access_key = secrets.token_urlsafe(32)
     try:
         protected_key = _protect_secret(access_key)
@@ -1440,7 +1443,15 @@ def generate_gateway_key():
                 "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
                 (protected_key,),
             )
-    except (OSError, RuntimeError):
+            connection.executemany(
+                "INSERT INTO settings (name, value) VALUES (?, ?) "
+                "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+                [
+                    ("gateway_enabled", "true"),
+                    ("gateway_auth_required", "true"),
+                ],
+            )
+    except (OSError, RuntimeError, sqlite3.Error):
         app.logger.exception("Could not save the encrypted client access key")
         return jsonify({"error": "Could not securely save the client access key on this Windows account."}), 500
     return jsonify({"clientAccessKey": access_key})
