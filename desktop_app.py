@@ -96,7 +96,7 @@ def main() -> None:
     status = StringVar(value="Starting dashboard…")
     server = None
     owns_server = False
-    dashboard_url = DASHBOARD_URL
+    dashboard_url = f"http://{HOST}:{PORT}/"
 
     Label(
         root,
