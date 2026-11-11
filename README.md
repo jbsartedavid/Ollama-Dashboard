@@ -67,7 +67,7 @@ To add a Desktop shortcut to the executable, run:
 .\create_desktop_shortcut.ps1
 ```
 
-Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. If a compatible dashboard is already running anywhere in the configured port range, it opens that instance. If Ollama or another app already owns the configured dashboard port, the dashboard skips busy ports and starts on the next available one; you do not need to stop Ollama. The selected port is shown in the control window and dashboard. The shortcut does not configure automatic startup when you sign in to Windows.
+Double-click **Ollama Dashboard** on your Desktop to start the app and open it in your default browser. The app includes a small control window with **Open dashboard** and **Stop** buttons. If a compatible dashboard is already running on the configured port, it opens that instance. When configured for port 11434, the dashboard requires that port so existing Ollama clients can be monitored without changing their URL; it will show an error rather than silently start on another port if 11434 is occupied. The shortcut does not configure automatic startup when you sign in to Windows.
 
 The executable keeps activity data and diagnostic logs under `%LOCALAPPDATA%\OllamaDashboard`; it does not write into the installation folder.
 
@@ -94,13 +94,13 @@ The desktop app serves its management dashboard only on the host's loopback inte
 
 ### Keep clients on the default port 11434
 
-To keep existing clients pointed at `http://<server-name-or-IP>:11434`, the dashboard must own port 11434 and Ollama must move to a loopback-only backend port. The bundled script sets the current Windows user's Ollama backend to `127.0.0.1:11435` and dashboard listener to `11434`; it does not stop or restart running apps:
+To keep existing clients pointed at `http://<server-name-or-IP>:11434` and have their requests recorded, the dashboard must own port 11434 and Ollama must move to a loopback-only backend port. The bundled script sets the current Windows user's Ollama backend to `127.0.0.1:11435` and dashboard listener to `11434`; it does not stop or restart running apps:
 
 ```powershell
 .\configure_monitored_ollama_ports.ps1
 ```
 
-Confirm the script's change. This machine is using standalone `ollama.exe serve` on `127.0.0.1:11435`; the Ollama Desktop app ignores the custom backend setting and must not own port 11434 while the dashboard proxy is running. Start the standalone Ollama server, then the dashboard. The dashboard's **Ollama address for clients** should show port 11434. Existing Ollama clients can keep the same host/IP, port, and API routes; no dashboard key or client changes are needed on trusted private networks.
+Confirm the script's change. Fully exit Ollama Desktop, which does not honor the custom backend setting. Start standalone `ollama.exe serve` on `127.0.0.1:11435`, then start the dashboard. The dashboard's **Ollama address for clients** should show port 11434. Existing Ollama clients can keep the same host/IP, port, and API routes; no dashboard key or client changes are needed on trusted private networks. If another process still owns port 11434, the dashboard displays an error instead of choosing another port, since a different port would not capture clients that continue using 11434.
 
 On the Ollama host, allow inbound port 11434 on the **Private** firewall profile and local subnet:
 
@@ -112,9 +112,7 @@ New-NetFirewallRule -DisplayName "Ollama Dashboard LAN Proxy" `
 
 Port takeover automatically enables the proxy. OmniRoute can use its OpenAI-compatible base URL `http://<server-name-or-IP>:11434/v1` or Ollama API base URL `http://<server-name-or-IP>:11434`, depending on the selected provider. The proxy supports `/v1/chat/completions` and `/v1/completions` as well as Ollama `/api/chat` and `/api/generate`.
 
-### Use the dashboard's default gateway port
-
-If Ollama owns port 11434, the dashboard automatically uses the next available port in its configured range (for example 11435 or 11436). Use the displayed **Ollama address for clients** in clients you want monitored and allow that port through the Private-profile/local-subnet firewall. Requests sent directly to Ollama on port 11434 still work normally, but bypass dashboard monitoring; the same TCP port cannot be shared by both Ollama and the dashboard. The dashboard control window shows the selected address.
+If you cannot move Ollama off port 11434, set a different `OLLAMA_DASHBOARD_PORT` and point only the clients you want monitored at the dashboard's displayed **Ollama address for clients**. Clients that keep connecting directly to Ollama on port 11434 will continue to work but cannot be observed by the dashboard; two apps cannot listen on the same address and port.
 
 Example Ollama API request from a client (for the port-11434 takeover setup):
 
@@ -179,7 +177,7 @@ The Flask app serves the dashboard and exposes a small local API:
 - **GPU metrics unavailable:** NVIDIA metrics require a working NVIDIA driver and `nvidia-smi` on the dashboard host. CPU, memory, pagefile, and disk metrics remain available independently.
 - **Shortcut does not start:** run `.\start_dashboard.ps1` directly to see any PowerShell error. Packaged-app diagnostics are written to `%LOCALAPPDATA%\OllamaDashboard\desktop.log`.
 - **Executable build fails:** make sure `.venv` is active and install build dependencies with `python -m pip install -r requirements-build.txt`.
-- **Ollama and dashboard conflict on port 11434:** the desktop app now leaves Ollama running and starts the dashboard on the next available port. Keep Ollama clients on port 11434 for direct access, or change monitored clients to the dashboard's displayed address. Both apps cannot listen on the same address and port at once.
+- **Ollama and dashboard conflict on port 11434:** for transparent monitoring, move Ollama to `127.0.0.1:11435` and let the dashboard own port 11434. Ollama Desktop must be fully exited; run standalone `ollama.exe serve` with `OLLAMA_HOST=127.0.0.1:11435`. If you keep Ollama on 11434, clients must use the dashboard's alternate gateway port to be monitored.
 - **Dashboard port range is full:** the desktop app checks the configured port and the next 20 ports. Set `OLLAMA_DASHBOARD_PORT` to a free port with available ports nearby, then restart the dashboard.
 - **Client cannot connect:** confirm the displayed Ollama address for clients and port, allow the app on the host's Private firewall profile, and keep the Ollama Desktop app from reclaiming port 11434. Clients must connect from a private/link-local address; dashboard management APIs intentionally reject LAN clients.
 

@@ -18,6 +18,6 @@ if ($PSCmdlet.ShouldProcess(
     Write-Output 'This script did not stop or restart any process.'
     Write-Output 'Fully exit Ollama Desktop; it does not honor the custom backend port.'
     Write-Output 'Start standalone ollama.exe serve on 127.0.0.1:11435, then start Ollama Dashboard.'
-    Write-Output 'The dashboard uses port 11434 when it is available; if Ollama Desktop owns it, the dashboard safely selects another port.'
-    Write-Output 'Clients using Ollama directly on port 11434 are not intercepted; point monitored clients at the dashboard address shown in its window.'
+    Write-Output 'The dashboard requires port 11434 for transparent monitoring and will not silently fall back to another port.'
+    Write-Output 'Clients can keep using the same server address and port 11434; the dashboard forwards requests to Ollama on 11435.'
 }
