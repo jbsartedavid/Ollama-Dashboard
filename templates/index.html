@@ -179,6 +179,42 @@
               </form>
             </section>
 
+            <section class="panel memory-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Personalization</p>
+                  <h2>Conversation memory</h2>
+                </div>
+              </div>
+              <form id="memorySettingsForm">
+                <label class="checkbox-label memory-enable" for="memoryEnabled">
+                  <input id="memoryEnabled" type="checkbox" />
+                  Save and use conversation memory
+                </label>
+                <p class="field-help">When enabled, successful dashboard and monitored Ollama chats are saved locally. Relevant earlier conversations are automatically added as reference context to later prompts.</p>
+
+                <label for="memoryDirectory">Memory storage folder</label>
+                <input id="memoryDirectory" type="text" maxlength="2048" required />
+                <p class="field-help">Changing folders switches to a separate store; existing memories in the previous folder are left untouched.</p>
+
+                <label for="memoryMaxMb">Maximum memory size (MB)</label>
+                <input id="memoryMaxMb" type="number" min="1" max="4096" step="1" required />
+                <p class="field-help">Oldest conversations are removed first to keep the memory database within this size limit, including its search index.</p>
+
+                <label class="checkbox-label" for="memoryModelScoped">
+                  <input id="memoryModelScoped" type="checkbox" />
+                  Keep memory separate for each model
+                </label>
+                <p class="field-help">When enabled, a model only retrieves conversations previously saved under that exact model name. Disable to share memories across models.</p>
+
+                <p id="memoryStatus" class="memory-status field-help" role="status">Loading memory status…</p>
+                <p class="field-help warning-copy">Memory contains conversation prompts and responses. It stays in the selected local folder; disable memory or clear it at any time.</p>
+                <button id="saveMemorySettingsBtn" class="primary-button" type="submit">Save memory settings <span aria-hidden="true">→</span></button>
+                <button id="clearMemoryBtn" class="secondary-button" type="button">Clear saved memories</button>
+                <p id="memorySettingsMessage" class="form-message" role="status"></p>
+              </form>
+            </section>
+
             <section class="panel server-panel">
               <div class="section-heading">
                 <div>

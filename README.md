@@ -22,7 +22,7 @@ Monitor the Ollama server, inventory, and loaded models together. Compare reques
 | Recent prompts, responses, and errors | Ollama version and installed model inventory |
 | Average dashboard response time | Currently loaded models and their memory use |
 | Prompt and generated token counts | Configurable status refresh (5–60 seconds or off) |
-| Tokens per second and per-model usage | CPU, physical/virtual memory, GPU/VRAM, disk capacity and I/O |
+| Tokens per second, per-model usage, and optional retrieved conversation memory | CPU, physical/virtual memory, GPU/VRAM, disk capacity and I/O |
 
 Activity is stored in a local SQLite database and remains available after restarting the dashboard. The dashboard can record its own generations and client Ollama/OpenAI-compatible generation and chat requests routed through its proxy. Direct connections to an Ollama process bypass the dashboard and are not recorded.
 
@@ -83,6 +83,7 @@ To rebuild from source, create `.venv`, install `requirements-build.txt`, and ru
 - **Host resources:** CPU utilization, physical memory, pagefile/swap use, system-drive capacity, disk read/write throughput, and NVIDIA GPU utilization, VRAM, temperature, and power when `nvidia-smi` is available. These are sampled from the computer running the dashboard; NVIDIA-only metrics show an explicit unavailable status when unsupported.
 - **Connection settings:** configure the Ollama server URL, model keep-alive duration, and optional upstream bearer API key in the dashboard. No model is preferred; all installed and loaded models are monitored together. On Windows, keys are encrypted with DPAPI for the current user.
 - **Remote clients:** when the dashboard owns port 11434, existing LAN clients can use the same Ollama URL without a dashboard key. Proxied `/api/generate`, `/api/chat`, `/v1/chat/completions`, and `/v1/completions` requests are recorded with the client IP, including streamed responses.
+- **Conversation memory:** optional local storage captures successful dashboard and monitored client prompts/responses. Relevant earlier turns are added as reference context to later supported requests. Memory is off by default, can be isolated by exact model name, and prunes the oldest turns to honor its configurable text-size limit.
 - **Local history:** source runs save request data in `dashboard.db` next to the app. The packaged Windows app stores it under `%LOCALAPPDATA%\OllamaDashboard`. Choose another location with `DASHBOARD_DATABASE`.
 
 Ollama status, activity, and host metrics use the refresh interval selected in the dashboard header (5, 10, 15, 30, or 60 seconds, or off). Host metrics describe the machine running this dashboard, not a remote Ollama host.
@@ -127,6 +128,14 @@ Replace the example address and model with the values for your setup. Clients do
 
 **Network security:** access is limited to private and link-local source IPs, but still exposes model inference to those networks. Restrict port 11434 to a trusted LAN or VPN and never expose it directly to the public internet.
 
+## Conversation memory
+
+Enable **Save and use conversation memory** in the dashboard to persist successful dashboard prompts and monitored Ollama chat/generation requests. For later requests, a local SQLite full-text index searches saved prompt/response excerpts and adds up to three relevant results as reference context; no extra model call or external service is used. Context retrieval supports Ollama `/api/chat` and `/api/generate`, OpenAI-compatible `/v1/chat/completions` and text `/v1/completions`, plus dashboard generations.
+
+Memory is disabled by default. When enabled, the default folder is `memory` next to the source app, or `%LOCALAPPDATA%\OllamaDashboard\memory` for the packaged app. Set another absolute folder and choose a **1–4096 MB** database-size limit (default 512 MB). The limit includes the SQLite full-text index; oldest turns are pruned first. The dashboard displays usage and storage errors, and **Clear saved memories** deletes the memory records in the selected folder. Changing folders selects a different database and leaves the previous one untouched.
+
+**Keep memory separate for each model** is enabled by default so models only retrieve memories saved under their exact model name. Disable it to share retrieval across models. Memories include full prompts and responses; store them on a trusted local disk and disable the feature if you do not want monitored client conversations persisted.
+
 ## Configuration
 
 | Variable | Default | Description |
@@ -156,6 +165,8 @@ The Flask app serves the dashboard and exposes a small local API:
 | `/api/models` | `GET` | Installed model names |
 | `/api/settings` | `GET`, `POST` | Read or update the Ollama server connection settings |
 | `/api/settings/refresh-interval` | `POST` | Save the dashboard's automatic refresh interval |
+| `/api/memory/settings` | `GET`, `POST` | Read or update local conversation-memory settings and usage |
+| `/api/memory/clear` | `POST` | Delete all memories in the selected memory store |
 | `/api/metrics` | `GET` | Activity totals, per-model usage, and recent requests |
 | `/api/generate` | `POST` | Generate a response and record its metrics |
 | `/api/*`, `/ollama/*`, `/v1/*` (from LAN) | Ollama methods | Private-LAN Ollama/OpenAI-compatible proxy; optional bearer key; management APIs remain loopback-only |

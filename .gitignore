@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 .env
 dashboard.db*
+memory/
 logs/
 .vscode/
 build/

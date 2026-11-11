@@ -187,7 +187,10 @@ async function refreshSystemMetrics() {
 }
 
 async function loadSettings() {
-  const settings = await getJson('/api/settings');
+  const [settings, memory] = await Promise.all([
+    getJson('/api/settings'),
+    getJson('/api/memory/settings')
+  ]);
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
@@ -205,6 +208,28 @@ async function loadSettings() {
     : 'Only needed for servers with bearer-token authentication. Saved keys are encrypted for this Windows account.';
   clearApiKeyInput.checked = false;
   apiKeyInput.disabled = false;
+  document.getElementById('memoryEnabled').checked = memory.enabled;
+  document.getElementById('memoryDirectory').value = memory.directory;
+  document.getElementById('memoryMaxMb').value = String(memory.maxMb);
+  document.getElementById('memoryModelScoped').checked = memory.modelScoped;
+  renderMemoryStatus(memory);
+}
+
+function renderMemoryStatus(memory) {
+  const used = memory.usedBytes > 0 ? formatBytes(memory.usedBytes) : '0 B';
+  const status = document.getElementById('memoryStatus');
+  status.textContent = `${numberFormat.format(memory.conversationCount)} conversations · ${used} / ${numberFormat.format(memory.maxMb)} MB used · ${memory.enabled ? 'Memory on' : 'Memory off'}`;
+  if (memory.lastError) {
+    status.textContent += ` · ${memory.lastError}`;
+    status.classList.add('error');
+  } else {
+    status.classList.remove('error');
+  }
+}
+
+async function refreshMemoryStatus() {
+  const memory = await getJson('/api/memory/settings');
+  renderMemoryStatus(memory);
 }
 
 async function saveSettings(event) {
@@ -236,6 +261,55 @@ async function saveSettings(event) {
   } finally {
     saveButton.disabled = false;
     saveButton.innerHTML = 'Save connection settings <span aria-hidden="true">→</span>';
+  }
+}
+
+async function saveMemorySettings(event) {
+  event.preventDefault();
+  const message = document.getElementById('memorySettingsMessage');
+  const button = document.getElementById('saveMemorySettingsBtn');
+  message.textContent = '';
+  message.classList.remove('error');
+  button.disabled = true;
+  button.textContent = 'Saving…';
+  try {
+    const memory = await getJson('/api/memory/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        enabled: document.getElementById('memoryEnabled').checked,
+        directory: document.getElementById('memoryDirectory').value.trim(),
+        maxMb: Number(document.getElementById('memoryMaxMb').value),
+        modelScoped: document.getElementById('memoryModelScoped').checked
+      })
+    });
+    renderMemoryStatus(memory);
+    message.textContent = 'Memory settings saved.';
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add('error');
+  } finally {
+    button.disabled = false;
+    button.innerHTML = 'Save memory settings <span aria-hidden="true">→</span>';
+  }
+}
+
+async function clearMemories() {
+  if (!window.confirm('Delete all saved conversation memories? This cannot be undone.')) return;
+  const button = document.getElementById('clearMemoryBtn');
+  const message = document.getElementById('memorySettingsMessage');
+  button.disabled = true;
+  message.textContent = '';
+  message.classList.remove('error');
+  try {
+    await getJson('/api/memory/clear', { method: 'POST' });
+    await refreshMemoryStatus();
+    message.textContent = 'Saved memories cleared.';
+  } catch (error) {
+    message.textContent = error.message;
+    message.classList.add('error');
+  } finally {
+    button.disabled = false;
   }
 }
 
@@ -352,7 +426,9 @@ async function refreshMetrics() {
 }
 
 async function refreshDashboard() {
-  const results = await Promise.allSettled([refreshHealth(), refreshMetrics(), refreshSystemMetrics()]);
+  const results = await Promise.allSettled([
+    refreshHealth(), refreshMetrics(), refreshSystemMetrics(), refreshMemoryStatus()
+  ]);
   if (results[1].status === 'rejected') {
     document.getElementById('activityList').innerHTML =
       `<div class="muted-copy">${escapeHtml(results[1].reason.message || 'Unable to load activity metrics.')}</div>`;
@@ -362,6 +438,11 @@ async function refreshDashboard() {
     document.getElementById('systemSampleTime').textContent = 'Unavailable';
     document.getElementById('systemGpuState').textContent = 'Unavailable';
     document.getElementById('systemGpuDevices').innerHTML = `<div class="muted-copy">${escapeHtml(message)}</div>`;
+  }
+  if (results[3].status === 'rejected') {
+    const status = document.getElementById('memoryStatus');
+    status.textContent = results[3].reason.message || 'Unable to load memory status.';
+    status.classList.add('error');
   }
 }
 
@@ -431,6 +512,8 @@ async function generateText() {
 document.getElementById('refreshBtn').addEventListener('click', refreshDashboard);
 document.getElementById('refreshModelsBtn').addEventListener('click', refreshHealth);
 settingsForm.addEventListener('submit', saveSettings);
+document.getElementById('memorySettingsForm').addEventListener('submit', saveMemorySettings);
+document.getElementById('clearMemoryBtn').addEventListener('click', clearMemories);
 document.getElementById('copyGatewayUrlBtn').addEventListener('click', () =>
   copySettingValue(document.getElementById('clientGatewayUrl'), 'client URL'));
 document.getElementById('refreshInterval').addEventListener('change', saveRefreshInterval);
