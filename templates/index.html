@@ -171,7 +171,7 @@
                   <input id="clientProxyEnabled" type="checkbox" />
                   Enable the LAN monitoring proxy
                 </label>
-                <p class="field-help">Point monitored clients at the proxy address below. For OpenAI-compatible clients such as OmniRoute, append <code>/v1</code> to the base URL. Client API keys authenticate proxy requests; they do not grant access to this dashboard page. Requests sent directly to Ollama on port 11434 still work, but bypass dashboard history and memory.</p>
+                <p class="field-help">Point monitored clients at the proxy address below. For OpenAI-compatible clients such as OmniRoute, append <code>/v1</code> to the base URL. A client API key is optional; enable the setting below only if you want to require one. Requests sent directly to Ollama on port 11434 still work, but bypass dashboard history and memory.</p>
                 <label for="clientGatewayUrl">Ollama address for clients</label>
                 <input id="clientGatewayUrl" type="text" readonly />
                 <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy Ollama address</button>
@@ -179,8 +179,9 @@
                   <input id="clientAuthRequired" type="checkbox" />
                   Require a client API key
                 </label>
+                <p class="field-help">When off, trusted private-network clients can connect without a key. When on, clients must send the generated key as a Bearer token.</p>
                 <p id="clientAccessKeyState" class="field-help"></p>
-                <button id="generateClientAccessKeyBtn" class="secondary-button" type="button">Generate and require client API key</button>
+                <button id="generateClientAccessKeyBtn" class="secondary-button" type="button">Generate optional client API key</button>
                 <div id="generatedClientKeyContainer" hidden>
                   <label for="generatedClientAccessKey">Copy this key into each monitored client now</label>
                   <input id="generatedClientAccessKey" type="text" readonly autocomplete="off" spellcheck="false" />

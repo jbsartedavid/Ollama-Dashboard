@@ -712,6 +712,17 @@ def _is_trusted_lan_request() -> bool:
 
 @app.before_request
 def restrict_remote_dashboard_access():
+    if (
+        not _is_loopback_request()
+        and request.path == "/"
+        and request.method == "GET"
+        and _is_trusted_lan_request()
+    ):
+        _, error, _ = _fetch_json("GET", "/api/version", timeout=3)
+        if error:
+            return Response("Ollama is not running", status=503, mimetype="text/plain")
+        return Response("Ollama is running", mimetype="text/plain")
+
     if not _is_loopback_request() and request.endpoint not in {
         "generate_text",
         "ollama_client_proxy",
@@ -1442,14 +1453,6 @@ def generate_gateway_key():
                 "INSERT INTO secrets (name, value) VALUES ('gateway_access_key', ?) "
                 "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
                 (protected_key,),
-            )
-            connection.executemany(
-                "INSERT INTO settings (name, value) VALUES (?, ?) "
-                "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
-                [
-                    ("gateway_enabled", "true"),
-                    ("gateway_auth_required", "true"),
-                ],
             )
     except (OSError, RuntimeError, sqlite3.Error):
         app.logger.exception("Could not save the encrypted client access key")
