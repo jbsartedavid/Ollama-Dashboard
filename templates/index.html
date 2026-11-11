@@ -91,6 +91,38 @@
           </div>
 
           <aside class="side-column">
+            <section class="panel settings-panel">
+              <div class="section-heading">
+                <div>
+                  <p class="eyebrow">Connection</p>
+                  <h2>Ollama settings</h2>
+                </div>
+              </div>
+              <form id="settingsForm">
+                <label for="ollamaBaseUrl">Server URL</label>
+                <input id="ollamaBaseUrl" type="url" maxlength="2048" placeholder="http://localhost:11434" required />
+                <p class="field-help">Ollama server address, including any API path prefix.</p>
+
+                <label for="defaultModelInput">Preferred model</label>
+                <input id="defaultModelInput" type="text" maxlength="256" placeholder="e.g. llama3.1" required />
+
+                <label for="keepAliveInput">Keep model loaded</label>
+                <input id="keepAliveInput" type="text" maxlength="32" placeholder="5m" required />
+                <p class="field-help">Examples: 5m, 30s, 0 (unload), or -1 (keep loaded).</p>
+
+                <label for="ollamaApiKey">API key <span class="optional-label">optional</span></label>
+                <input id="ollamaApiKey" type="password" maxlength="4096" autocomplete="new-password" placeholder="Not configured" />
+                <p id="apiKeyState" class="field-help">Only required for servers that use bearer-token authentication. Saved keys are encrypted for this Windows account.</p>
+                <label class="checkbox-label" for="clearApiKey">
+                  <input id="clearApiKey" type="checkbox" />
+                  Remove saved API key
+                </label>
+
+                <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
+                <p id="settingsMessage" class="form-message" role="status"></p>
+              </form>
+            </section>
+
             <section class="panel server-panel">
               <div class="section-heading">
                 <div>

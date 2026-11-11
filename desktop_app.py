@@ -1,5 +1,6 @@
 import logging
 import os
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -19,9 +20,29 @@ DASHBOARD_URL = f"http://{HOST}:{PORT}/"
 def _is_dashboard_running() -> bool:
     try:
         with urllib.request.urlopen(DASHBOARD_URL, timeout=2) as response:
-            return response.status == 200 and b"<title>Ollama Dashboard</title>" in response.read(8192)
+            is_dashboard = response.status == 200 and b"<title>Ollama Dashboard</title>" in response.read(8192)
+        if not is_dashboard:
+            return False
+        with urllib.request.urlopen(f"{DASHBOARD_URL}api/settings", timeout=2) as response:
+            return response.status == 200
     except (OSError, urllib.error.URLError):
         return False
+
+
+def _find_available_port() -> int:
+    last_port = min(PORT + 20, 65535)
+    for port in range(PORT, last_port + 1):
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+            probe.settimeout(0.2)
+            if probe.connect_ex((HOST, port)) == 0:
+                continue
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
+            try:
+                candidate.bind((HOST, port))
+                return port
+            except OSError:
+                continue
+    raise OSError(f"No free local port found between {PORT} and {last_port}.")
 
 
 def main() -> None:
@@ -42,6 +63,7 @@ def main() -> None:
     status = StringVar(value="Starting dashboard…")
     server = None
     owns_server = False
+    dashboard_url = DASHBOARD_URL
 
     Label(
         root,
@@ -69,7 +91,7 @@ def main() -> None:
     buttons.pack()
 
     def open_dashboard() -> None:
-        webbrowser.open(DASHBOARD_URL)
+        webbrowser.open(dashboard_url)
 
     def close_app() -> None:
         if owns_server and server is not None:
@@ -106,19 +128,20 @@ def main() -> None:
         if _is_dashboard_running():
             status.set("Dashboard is already running.")
         else:
-            server = make_server(HOST, PORT, app, threaded=True)
+            selected_port = _find_available_port()
+            dashboard_url = f"http://{HOST}:{selected_port}/"
+            server = make_server(HOST, selected_port, app, threaded=True)
             owns_server = True
             threading.Thread(target=server.serve_forever, daemon=True).start()
-            status.set(f"Running locally at {DASHBOARD_URL}")
+            status.set(f"Running locally at {dashboard_url}")
         open_dashboard()
     except OSError as exc:
         logging.exception("Could not start dashboard server")
         status.set("Could not start the dashboard.")
         messagebox.showerror(
             "Ollama Dashboard",
-            f"Could not start the local server on port {PORT}.\n\n"
-            "Close the application using this port, or set "
-            "OLLAMA_DASHBOARD_PORT to another port and restart.\n\n"
+            "Could not start the local dashboard server.\n\n"
+            "Close other local services or set OLLAMA_DASHBOARD_PORT to an available port.\n\n"
             f"Details: {exc}",
             parent=root,
         )

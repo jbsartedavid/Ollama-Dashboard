@@ -192,8 +192,8 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.02em; }
 .model-dot { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .text-button { padding: 5px 0 5px 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 
-.compose-panel label { display: block; margin: 14px 0 7px; color: #aab6c9; font-size: 10px; font-weight: 600; }
-select, textarea {
+.compose-panel label, .settings-panel label:not(.checkbox-label) { display: block; margin: 14px 0 7px; color: #aab6c9; font-size: 10px; font-weight: 600; }
+select, textarea, .settings-panel input:not([type="checkbox"]) {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -203,8 +203,16 @@ select, textarea {
   padding: 10px 11px;
   font-size: 11px;
 }
-select:focus, textarea:focus { border-color: rgba(163, 230, 53, 0.55); }
+select:focus, textarea:focus, .settings-panel input:focus { border-color: rgba(163, 230, 53, 0.55); }
 textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
+.settings-panel input:not([type="checkbox"]) { height: 38px; }
+.field-help { margin: 6px 0 0; color: #738096; font-size: 9px; line-height: 1.5; }
+.optional-label { color: #738096; font-weight: 400; }
+.checkbox-label { display: flex; align-items: center; gap: 7px; margin-top: 11px; color: var(--muted); font-size: 10px; }
+.checkbox-label input { accent-color: var(--accent); }
+.form-message { min-height: 0; margin: 0; color: var(--success); font-size: 10px; }
+.form-message:not(:empty) { margin-top: 9px; }
+.form-message.error { color: var(--error); }
 .primary-button {
   display: flex;
   justify-content: space-between;
