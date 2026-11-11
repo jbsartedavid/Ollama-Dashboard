@@ -20,6 +20,17 @@
         <div class="header-right">
           <span id="lastUpdated" class="last-updated">Connecting…</span>
           <span id="statusBadge" class="status status-offline"><span class="status-dot"></span>Checking</span>
+          <label class="refresh-control" for="refreshInterval">
+            <span>Refresh</span>
+            <select id="refreshInterval" aria-label="Automatic refresh interval">
+              <option value="5">5 sec</option>
+              <option value="10" selected>10 sec</option>
+              <option value="15">15 sec</option>
+              <option value="30">30 sec</option>
+              <option value="60">60 sec</option>
+              <option value="0">Off</option>
+            </select>
+          </label>
           <button id="refreshBtn" class="icon-button" title="Refresh dashboard" aria-label="Refresh dashboard">↻</button>
         </div>
       </header>
@@ -155,26 +166,13 @@
 
                 <div class="gateway-divider"></div>
                 <p class="subsection-title">Remote client monitoring</p>
-                <p class="field-help">When this dashboard owns port 11434, existing Ollama clients can keep using the same server address; their chat and generation requests are recorded here.</p>
+                <p id="remoteMonitoringStatus" class="field-help">Checking the Ollama monitoring proxy…</p>
+                <p class="field-help">Clients keep using the same server address and port 11434. Chat and generation requests are recorded here.</p>
                 <p class="field-help warning-copy">Requests that connect directly to an Ollama process bypass this dashboard. With port takeover, Ollama runs locally on port 11435 and this dashboard forwards the standard API on port 11434.</p>
-                <label class="checkbox-label gateway-toggle" for="gatewayEnabled">
-                  <input id="gatewayEnabled" type="checkbox" />
-                  Enable Ollama API monitoring proxy
-                </label>
-                <label class="checkbox-label" for="gatewayAuthRequired">
-                  <input id="gatewayAuthRequired" type="checkbox" />
-                  Require a dashboard key from clients
-                </label>
-                <p class="field-help">By default, normal Ollama clients need no changes on trusted private networks. Enable the key requirement if clients should authenticate with the generated bearer/API key.</p>
-                <label for="clientGatewayUrl">Client Ollama URL</label>
+                <label for="clientGatewayUrl">Ollama address for clients</label>
                 <input id="clientGatewayUrl" type="text" readonly />
-                <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy client URL</button>
-                <label for="clientAccessKey">Client access key</label>
-                <input id="clientAccessKey" type="password" readonly placeholder="Generate a key to enable client access" />
-                <button id="generateGatewayKeyBtn" class="secondary-button" type="button">Generate / rotate client key</button>
-                <button id="copyGatewayKeyBtn" class="secondary-button" type="button" disabled>Copy client key</button>
-                <p id="gatewayKeyMessage" class="field-help" role="status">Generate and copy a key, enable the proxy, then save. Clients must use Authorization: Bearer &lt;key&gt;.</p>
-                <p class="field-help warning-copy">Unauthenticated proxy access is limited to private and link-local client IP addresses. Keep port 11434 behind a trusted LAN/VPN firewall; do not expose it directly to the public internet.</p>
+                <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy Ollama address</button>
+                <p class="field-help warning-copy">Keep port 11434 behind a trusted LAN or VPN firewall; do not expose it directly to the public internet.</p>
 
                 <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
                 <p id="settingsMessage" class="form-message" role="status"></p>
@@ -235,8 +233,8 @@
         </section>
 
         <footer class="footer">
-          <span>Metrics cover dashboard generations and authenticated client traffic routed through the proxy.</span>
-          <span id="refreshInterval">Auto-refresh every 10 seconds</span>
+          <span>Metrics cover dashboard generations and client traffic routed through the proxy.</span>
+          <span id="refreshIntervalSummary">Automatic refresh: 10 seconds</span>
         </footer>
       </main>
     </div>

@@ -65,6 +65,8 @@ button { color: inherit; }
 h1 { margin: 0; font-size: 20px; letter-spacing: -0.035em; }
 h2 { margin: 0; font-size: 15px; letter-spacing: -0.02em; }
 .header-right { gap: 16px; }
+.refresh-control { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: 10px; white-space: nowrap; }
+.refresh-control select { width: auto; min-width: 76px; padding: 6px 8px; font-size: 10px; }
 .last-updated { color: var(--muted); font-size: 11px; }
 .status {
   display: inline-flex;
@@ -274,6 +276,7 @@ textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
   .container { padding: 0 15px 22px; }
   .topbar { min-height: 78px; }
   .header-right { gap: 8px; }
+  .refresh-control { gap: 4px; }
   .last-updated { display: none; }
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .hardware-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

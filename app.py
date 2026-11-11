@@ -237,8 +237,15 @@ def _get_ollama_config() -> dict[str, Any]:
         "gateway_enabled": (
             port_takeover or _get_setting("gateway_enabled", "false") == "true"
         ),
-        "gateway_auth_required": _get_setting("gateway_auth_required", "false") == "true",
+        "gateway_auth_required": (
+            False if port_takeover else _get_setting("gateway_auth_required", "false") == "true"
+        ),
     }
+
+
+def _get_auto_refresh_seconds() -> int:
+    value = _get_setting("auto_refresh_seconds", "10")
+    return int(value) if value in {"0", "5", "10", "15", "30", "60"} else 10
 
 
 def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
@@ -246,8 +253,11 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
     keep_alive = body.get("keepAlive", "5m")
     api_key = body.get("apiKey", "")
     clear_api_key = body.get("clearApiKey", False)
-    gateway_enabled = body.get("gatewayEnabled", False)
-    gateway_auth_required = body.get("gatewayAuthRequired", False)
+    current_config = _get_ollama_config()
+    gateway_enabled = body.get("gatewayEnabled", current_config["gateway_enabled"])
+    gateway_auth_required = body.get(
+        "gatewayAuthRequired", current_config["gateway_auth_required"]
+    )
 
     if not all(isinstance(value, str) for value in (base_url, keep_alive, api_key)):
         return None, "Server URL, keep-alive, and API key must be strings."
@@ -828,6 +838,7 @@ def ollama_settings():
                 "gatewayAuthRequired": config["gateway_auth_required"],
                 "clientAccessKeyConfigured": _has_secret("gateway_access_key"),
                 "clientGatewayUrl": _client_gateway_url(),
+                "autoRefreshSeconds": _get_auto_refresh_seconds(),
             }
         )
 
@@ -843,6 +854,29 @@ def ollama_settings():
         app.logger.exception("Could not save Ollama settings")
         return jsonify({"error": "Could not securely save the API key on this Windows account."}), 500
     return jsonify({"saved": True})
+
+
+@app.route("/api/settings/refresh-interval", methods=["POST"])
+def save_refresh_interval():
+    if not _is_loopback_request():
+        return jsonify({"error": "Settings are available only on the dashboard host."}), 403
+    body = request.get_json(silent=True)
+    if not isinstance(body, dict):
+        return jsonify({"error": "Request body must be a JSON object."}), 400
+    seconds = body.get("seconds")
+    if (
+        isinstance(seconds, bool)
+        or not isinstance(seconds, int)
+        or seconds not in {0, 5, 10, 15, 30, 60}
+    ):
+        return jsonify({"error": "Refresh interval must be 0, 5, 10, 15, 30, or 60 seconds."}), 400
+    with _db_session() as connection:
+        connection.execute(
+            "INSERT INTO settings (name, value) VALUES ('auto_refresh_seconds', ?) "
+            "ON CONFLICT(name) DO UPDATE SET value = excluded.value",
+            (str(seconds),),
+        )
+    return jsonify({"saved": True, "autoRefreshSeconds": seconds})
 
 
 @app.route("/api/settings/gateway-key", methods=["POST"])

@@ -5,10 +5,10 @@ const generateBtn = document.getElementById('generateBtn');
 const generateError = document.getElementById('generateError');
 const settingsForm = document.getElementById('settingsForm');
 const settingsMessage = document.getElementById('settingsMessage');
-const gatewayKeyMessage = document.getElementById('gatewayKeyMessage');
 const apiKeyInput = document.getElementById('ollamaApiKey');
 const clearApiKeyInput = document.getElementById('clearApiKey');
 const numberFormat = new Intl.NumberFormat();
+let refreshTimer = null;
 
 function formatDuration(milliseconds) {
   if (!Number.isFinite(milliseconds) || milliseconds <= 0) return '—';
@@ -190,29 +190,16 @@ async function loadSettings() {
   const settings = await getJson('/api/settings');
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
-  document.getElementById('gatewayEnabled').checked = settings.gatewayEnabled;
-  document.getElementById('gatewayAuthRequired').checked = settings.gatewayAuthRequired;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
-  document.getElementById('clientAccessKey').value = '';
-  document.getElementById('clientAccessKey').type = 'password';
-  document.getElementById('clientAccessKey').placeholder = settings.clientAccessKeyConfigured
-    ? 'Key saved securely — rotate to issue a new key'
-    : 'Generate a key to enable client access';
-  document.getElementById('generateGatewayKeyBtn').disabled = false;
-  document.getElementById('copyGatewayKeyBtn').disabled = true;
-  if (gatewayKeyMessage.dataset.generated !== 'true') {
-    gatewayKeyMessage.textContent = settings.clientAccessKeyConfigured
-      ? 'A client key is configured. Generate/rotate it to display a new key. The current key cannot be viewed again.'
-      : 'Generate a key, copy it now, then enable the proxy and save. Use Authorization: Bearer <key> on clients.';
-  }
-  if (gatewayKeyMessage.dataset.generated !== 'true') {
-    gatewayKeyMessage.textContent = settings.clientAccessKeyConfigured
-      ? 'A client key is saved. The key is optional on trusted private networks unless Require a dashboard key is enabled.'
-      : 'No key is needed for clients on trusted private networks. Generate one only if you enable the client key requirement.';
-  }
-  gatewayKeyMessage.classList.remove('error');
+  document.getElementById('remoteMonitoringStatus').textContent = settings.gatewayEnabled
+    ? 'Monitoring is active on port 11434. Clients use the same Ollama address; no dashboard key or client changes are needed.'
+    : 'The monitoring proxy is available when the dashboard is configured to own port 11434.';
+  const refreshInterval = document.getElementById('refreshInterval');
+  refreshInterval.value = String(settings.autoRefreshSeconds);
+  refreshInterval.dataset.savedValue = String(settings.autoRefreshSeconds);
+  configureRefresh(settings.autoRefreshSeconds);
   apiKeyInput.value = '';
-  apiKeyInput.placeholder = settings.apiKeyConfigured ? 'Saved securely — leave blank to keep' : 'Not configured';
+  apiKeyInput.placeholder = settings.apiKeyConfigured ? 'Saved securely ? leave blank to keep' : 'Not configured';
   document.getElementById('apiKeyState').textContent = settings.apiKeyConfigured
     ? 'A key is saved encrypted for this Windows account. Leave blank to keep it, or select Remove to clear it.'
     : 'Only needed for servers with bearer-token authentication. Saved keys are encrypted for this Windows account.';
@@ -234,15 +221,12 @@ async function saveSettings(event) {
       body: JSON.stringify({
         baseUrl: document.getElementById('ollamaBaseUrl').value,
         keepAlive: document.getElementById('keepAliveInput').value,
-        gatewayEnabled: document.getElementById('gatewayEnabled').checked,
-        gatewayAuthRequired: document.getElementById('gatewayAuthRequired').checked,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
       })
     });
     if (!saved.saved) throw new Error('Settings were not saved.');
     settingsMessage.textContent = 'Settings saved.';
-    gatewayKeyMessage.dataset.generated = 'false';
     modelSelect.value = '';
     await loadSettings();
     await refreshDashboard();
@@ -255,31 +239,10 @@ async function saveSettings(event) {
   }
 }
 
-async function generateGatewayKey() {
-  const button = document.getElementById('generateGatewayKeyBtn');
-  gatewayKeyMessage.classList.remove('error');
-  gatewayKeyMessage.textContent = 'Generating a new key; any previous client key will stop working…';
-  button.disabled = true;
-  try {
-    const data = await getJson('/api/settings/gateway-key', { method: 'POST' });
-    document.getElementById('clientAccessKey').type = 'text';
-    document.getElementById('clientAccessKey').value = data.clientAccessKey;
-    document.getElementById('copyGatewayKeyBtn').disabled = false;
-    document.getElementById('gatewayEnabled').checked = true;
-    gatewayKeyMessage.textContent = 'New key generated. Copy it now; it will not be shown again after reload. Enable the key requirement to use it.';
-    gatewayKeyMessage.dataset.generated = 'true';
-  } catch (error) {
-    gatewayKeyMessage.textContent = error.message;
-    gatewayKeyMessage.classList.add('error');
-  } finally {
-    button.disabled = false;
-  }
-}
-
 async function copySettingValue(input, label) {
   if (!input.value) {
-    gatewayKeyMessage.textContent = `No ${label} is available to copy.`;
-    gatewayKeyMessage.classList.add('error');
+    settingsMessage.textContent = `No ${label} is available to copy.`;
+    settingsMessage.classList.add('error');
     return;
   }
   try {
@@ -288,13 +251,13 @@ async function copySettingValue(input, label) {
     input.focus();
     input.select();
     if (!document.execCommand('copy')) {
-      gatewayKeyMessage.textContent = `Could not copy the ${label}; select and copy it manually.`;
-      gatewayKeyMessage.classList.add('error');
+      settingsMessage.textContent = `Could not copy the ${label}; select and copy it manually.`;
+      settingsMessage.classList.add('error');
       return;
     }
   }
-  gatewayKeyMessage.classList.remove('error');
-  gatewayKeyMessage.textContent = `${label === 'client key' ? 'Client key' : 'Client URL'} copied.`;
+  settingsMessage.classList.remove('error');
+  settingsMessage.textContent = `${label} copied.`;
 }
 
 function renderLatestResponse(activity) {
@@ -402,6 +365,38 @@ async function refreshDashboard() {
   }
 }
 
+function configureRefresh(seconds) {
+  if (refreshTimer !== null) window.clearInterval(refreshTimer);
+  refreshTimer = seconds > 0
+    ? window.setInterval(refreshDashboard, seconds * 1000)
+    : null;
+  document.getElementById('refreshIntervalSummary').textContent = seconds > 0
+    ? `Automatic refresh: ${seconds} seconds`
+    : 'Automatic refresh: off';
+}
+
+async function saveRefreshInterval(event) {
+  const select = event.currentTarget;
+  const previous = select.dataset.savedValue || '10';
+  const seconds = Number(select.value);
+  select.disabled = true;
+  try {
+    const saved = await getJson('/api/settings/refresh-interval', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ seconds })
+    });
+    select.dataset.savedValue = String(saved.autoRefreshSeconds);
+    configureRefresh(saved.autoRefreshSeconds);
+  } catch (error) {
+    select.value = previous;
+    settingsMessage.textContent = error.message;
+    settingsMessage.classList.add('error');
+  } finally {
+    select.disabled = false;
+  }
+}
+
 async function generateText() {
   const prompt = promptInput.value.trim();
   const model = modelSelect.value;
@@ -436,11 +431,9 @@ async function generateText() {
 document.getElementById('refreshBtn').addEventListener('click', refreshDashboard);
 document.getElementById('refreshModelsBtn').addEventListener('click', refreshHealth);
 settingsForm.addEventListener('submit', saveSettings);
-document.getElementById('generateGatewayKeyBtn').addEventListener('click', generateGatewayKey);
 document.getElementById('copyGatewayUrlBtn').addEventListener('click', () =>
   copySettingValue(document.getElementById('clientGatewayUrl'), 'client URL'));
-document.getElementById('copyGatewayKeyBtn').addEventListener('click', () =>
-  copySettingValue(document.getElementById('clientAccessKey'), 'client key'));
+document.getElementById('refreshInterval').addEventListener('change', saveRefreshInterval);
 clearApiKeyInput.addEventListener('change', () => {
   apiKeyInput.disabled = clearApiKeyInput.checked;
   if (clearApiKeyInput.checked) apiKeyInput.value = '';
@@ -457,4 +450,3 @@ loadSettings()
     settingsMessage.classList.add('error');
     refreshDashboard();
   });
-window.setInterval(refreshDashboard, 10000);

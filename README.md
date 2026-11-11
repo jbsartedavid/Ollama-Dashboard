@@ -21,7 +21,7 @@ Monitor the Ollama server, inventory, and loaded models together. Compare reques
 | Request totals and success/failure counts | Connection status and API latency |
 | Recent prompts, responses, and errors | Ollama version and installed model inventory |
 | Average dashboard response time | Currently loaded models and their memory use |
-| Prompt and generated token counts | Automatic status refresh every 10 seconds |
+| Prompt and generated token counts | Configurable status refresh (5–60 seconds or off) |
 | Tokens per second and per-model usage | CPU, physical/virtual memory, GPU/VRAM, disk capacity and I/O |
 
 Activity is stored in a local SQLite database and remains available after restarting the dashboard. The dashboard can record its own generations and client Ollama/OpenAI-compatible generation and chat requests routed through its proxy. Direct connections to an Ollama process bypass the dashboard and are not recorded.
@@ -85,7 +85,7 @@ To rebuild from source, create `.venv`, install `requirements-build.txt`, and ru
 - **Remote clients:** when the dashboard owns port 11434, existing LAN clients can use the same Ollama URL without a dashboard key. Proxied `/api/generate`, `/api/chat`, `/v1/chat/completions`, and `/v1/completions` requests are recorded with the client IP, including streamed responses.
 - **Local history:** source runs save request data in `dashboard.db` next to the app. The packaged Windows app stores it under `%LOCALAPPDATA%\OllamaDashboard`. Choose another location with `DASHBOARD_DATABASE`.
 
-Ollama status, activity, and host metrics refresh every 10 seconds. Host metrics describe the machine running this dashboard, not a remote Ollama host.
+Ollama status, activity, and host metrics use the refresh interval selected in the dashboard header (5, 10, 15, 30, or 60 seconds, or off). Host metrics describe the machine running this dashboard, not a remote Ollama host.
 
 ## Monitor clients on your LAN
 
@@ -99,7 +99,7 @@ To keep existing clients pointed at `http://<server-name-or-IP>:11434`, the dash
 .\configure_monitored_ollama_ports.ps1
 ```
 
-Confirm the script's change. This machine is using standalone `ollama.exe serve` on `127.0.0.1:11435`; the Ollama Desktop app ignores the custom backend setting and must not own port 11434 while the dashboard proxy is running. Start the standalone Ollama server, then the dashboard. The **Client Ollama URL** should show port 11434. Existing Ollama clients can keep the same host/IP, port, and API routes, and do not need a dashboard key on trusted private networks.
+Confirm the script's change. This machine is using standalone `ollama.exe serve` on `127.0.0.1:11435`; the Ollama Desktop app ignores the custom backend setting and must not own port 11434 while the dashboard proxy is running. Start the standalone Ollama server, then the dashboard. The dashboard's **Ollama address for clients** should show port 11434. Existing Ollama clients can keep the same host/IP, port, and API routes; no dashboard key or client changes are needed on trusted private networks.
 
 On the Ollama host, allow inbound port 11434 on the **Private** firewall profile and local subnet:
 
@@ -109,11 +109,11 @@ New-NetFirewallRule -DisplayName "Ollama Dashboard LAN Proxy" `
   -RemoteAddress LocalSubnet -Profile Private
 ```
 
-Port takeover automatically enables the proxy. The optional **Require a dashboard key from clients** setting restores bearer-key authentication when needed; generate a key and configure it in the client's API-key/bearer-token setting. OmniRoute can use its OpenAI-compatible base URL `http://<server-name-or-IP>:11434/v1` or Ollama API base URL `http://<server-name-or-IP>:11434`, depending on the selected provider. The proxy supports `/v1/chat/completions` and `/v1/completions` as well as Ollama `/api/chat` and `/api/generate`.
+Port takeover automatically enables the proxy. OmniRoute can use its OpenAI-compatible base URL `http://<server-name-or-IP>:11434/v1` or Ollama API base URL `http://<server-name-or-IP>:11434`, depending on the selected provider. The proxy supports `/v1/chat/completions` and `/v1/completions` as well as Ollama `/api/chat` and `/api/generate`.
 
 ### Use the dashboard's default gateway port
 
-If you do not move Ollama off port 11434, use the displayed **Client Ollama URL** instead (usually port 5000-5020) and configure clients to use that URL. Apply a matching Private-profile/local-subnet firewall rule for the displayed port. Requests sent directly to the Ollama server port will not be visible to this dashboard.
+If you do not move Ollama off port 11434, use the displayed **Ollama address for clients** instead (usually port 5000-5020) and configure clients to use that URL. Apply a matching Private-profile/local-subnet firewall rule for the displayed port. Requests sent directly to the Ollama server port will not be visible to this dashboard.
 
 Example Ollama API request from a client (for the port-11434 takeover setup):
 
@@ -123,18 +123,9 @@ Invoke-RestMethod -Uri "http://<server-name-or-IP>:11434/api/generate" `
   -Method Post -ContentType "application/json" -Body $body
 ```
 
-When client-key authentication is enabled, include the generated bearer key:
+Replace the example address and model with the values for your setup. Clients do not need a dashboard-specific Authorization header. The proxy forwards supported Ollama and OpenAI-compatible routes, but only generation and chat requests are added to response history.
 
-```powershell
-$headers = @{ Authorization = "Bearer <client-key>" }
-$body = @{ model = "qwen2.5-coder:latest"; prompt = "Say hello"; stream = $false } | ConvertTo-Json
-Invoke-RestMethod -Uri "http://<server-name-or-IP>:<dashboard-port>/api/generate" `
-  -Method Post -Headers $headers -ContentType "application/json" -Body $body
-```
-
-Replace the example address and model with the values for your setup. On the port-11434 takeover setup, the client does not need an Authorization header unless **Require a dashboard key from clients** is enabled. The proxy forwards supported Ollama and OpenAI-compatible routes, but only generation and chat requests are added to response history.
-
-**Network security:** unauthenticated access is limited to private and link-local source IPs, but still exposes model inference to those networks. Restrict port 11434 to a trusted LAN or VPN and never expose it directly to the public internet. Enabling the optional client key adds bearer authentication; plain HTTP does not encrypt that key in transit.
+**Network security:** access is limited to private and link-local source IPs, but still exposes model inference to those networks. Restrict port 11434 to a trusted LAN or VPN and never expose it directly to the public internet.
 
 ## Configuration
 
@@ -164,6 +155,7 @@ The Flask app serves the dashboard and exposes a small local API:
 | `/api/system` | `GET` | Local host CPU, memory, disk, and GPU metrics |
 | `/api/models` | `GET` | Installed model names |
 | `/api/settings` | `GET`, `POST` | Read or update the Ollama server connection settings |
+| `/api/settings/refresh-interval` | `POST` | Save the dashboard's automatic refresh interval |
 | `/api/metrics` | `GET` | Activity totals, per-model usage, and recent requests |
 | `/api/generate` | `POST` | Generate a response and record its metrics |
 | `/api/*`, `/ollama/*`, `/v1/*` (from LAN) | Ollama methods | Private-LAN Ollama/OpenAI-compatible proxy; optional bearer key; management APIs remain loopback-only |
@@ -172,12 +164,12 @@ The Flask app serves the dashboard and exposes a small local API:
 
 - **Ollama offline:** start Ollama and confirm its API is reachable at `OLLAMA_BASE_URL`.
 - **No models available:** pull a model with `ollama pull <model-name>`, then refresh the dashboard.
-- **Client requests do not appear:** direct calls to the Ollama backend bypass monitoring. Route clients through the displayed dashboard URL, or move Ollama to port 11435 and run the dashboard proxy on port 11434. Ensure the client sends the dashboard bearer key.
+- **Client requests do not appear:** direct calls to the Ollama backend bypass monitoring. For clients to keep using port 11434, move Ollama to port 11435 and run the dashboard proxy on port 11434. No dashboard key is required for trusted private-network clients.
 - **GPU metrics unavailable:** NVIDIA metrics require a working NVIDIA driver and `nvidia-smi` on the dashboard host. CPU, memory, pagefile, and disk metrics remain available independently.
 - **Shortcut does not start:** run `.\start_dashboard.ps1` directly to see any PowerShell error. Packaged-app diagnostics are written to `%LOCALAPPDATA%\OllamaDashboard\desktop.log`.
 - **Executable build fails:** make sure `.venv` is active and install build dependencies with `python -m pip install -r requirements-build.txt`.
 - **Port 5000 is already in use:** the desktop app automatically checks the next available local ports. For source runs, set `OLLAMA_DASHBOARD_PORT` before starting `desktop_app.py`.
-- **Client cannot connect:** confirm the displayed client URL and port, allow the app on the host's Private firewall profile, and keep the Ollama Desktop app from reclaiming port 11434. Unauthenticated clients must connect from a private/link-local address; dashboard management APIs intentionally reject LAN clients.
+- **Client cannot connect:** confirm the displayed Ollama address for clients and port, allow the app on the host's Private firewall profile, and keep the Ollama Desktop app from reclaiming port 11434. Clients must connect from a private/link-local address; dashboard management APIs intentionally reject LAN clients.
 
 ## Project layout
 
