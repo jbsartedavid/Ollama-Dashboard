@@ -48,6 +48,43 @@
           </article>
         </section>
 
+        <section class="panel hardware-panel" aria-label="Host hardware metrics">
+          <div class="section-heading">
+            <div>
+              <p class="eyebrow">Host resources</p>
+              <h2>System performance</h2>
+            </div>
+            <span id="systemSampleTime" class="subtle-badge">Sampling…</span>
+          </div>
+          <div class="hardware-grid">
+            <article class="hardware-card">
+              <div class="hardware-card-heading"><span>CPU</span><strong id="systemCpuValue">—</strong></div>
+              <div id="systemCpuBar" class="usage-track" role="progressbar" aria-label="CPU utilization" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+              <span id="systemCpuDetail" class="hardware-detail">Utilization · logical cores</span>
+            </article>
+            <article class="hardware-card">
+              <div class="hardware-card-heading"><span>Physical memory</span><strong id="systemMemoryValue">—</strong></div>
+              <div id="systemMemoryBar" class="usage-track" role="progressbar" aria-label="Physical memory utilization" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+              <span id="systemMemoryDetail" class="hardware-detail">Used of total</span>
+            </article>
+            <article class="hardware-card">
+              <div class="hardware-card-heading"><span>Virtual memory</span><strong id="systemVirtualMemoryValue">—</strong></div>
+              <div id="systemVirtualMemoryBar" class="usage-track" role="progressbar" aria-label="Virtual memory utilization" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+              <span id="systemVirtualMemoryDetail" class="hardware-detail">Pagefile / swap used</span>
+            </article>
+            <article class="hardware-card">
+              <div class="hardware-card-heading"><span id="systemDiskLabel">System drive</span><strong id="systemDiskValue">—</strong></div>
+              <div id="systemDiskBar" class="usage-track" role="progressbar" aria-label="System drive usage" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span></span></div>
+              <span id="systemDiskDetail" class="hardware-detail">Used of total</span>
+              <span id="systemDiskIo" class="hardware-detail">Read — · Write —</span>
+            </article>
+            <article class="hardware-card gpu-card">
+              <div class="hardware-card-heading"><span>GPU / VRAM</span><span id="systemGpuState" class="hardware-detail">Checking…</span></div>
+              <div id="systemGpuDevices" class="gpu-device-list"><div class="muted-copy">Checking GPU telemetry…</div></div>
+            </article>
+          </div>
+        </section>
+
         <section class="main-grid">
           <div class="primary-column">
             <section class="panel activity-panel">
@@ -118,11 +155,17 @@
 
                 <div class="gateway-divider"></div>
                 <p class="subsection-title">Remote client monitoring</p>
-                <p class="field-help">Route client Ollama requests through this dashboard to record activity.</p>
+                <p class="field-help">When this dashboard owns port 11434, existing Ollama clients can keep using the same server address; their chat and generation requests are recorded here.</p>
+                <p class="field-help warning-copy">Requests that connect directly to an Ollama process bypass this dashboard. With port takeover, Ollama runs locally on port 11435 and this dashboard forwards the standard API on port 11434.</p>
                 <label class="checkbox-label gateway-toggle" for="gatewayEnabled">
                   <input id="gatewayEnabled" type="checkbox" />
-                  Enable authenticated network proxy
+                  Enable Ollama API monitoring proxy
                 </label>
+                <label class="checkbox-label" for="gatewayAuthRequired">
+                  <input id="gatewayAuthRequired" type="checkbox" />
+                  Require a dashboard key from clients
+                </label>
+                <p class="field-help">By default, normal Ollama clients need no changes on trusted private networks. Enable the key requirement if clients should authenticate with the generated bearer/API key.</p>
                 <label for="clientGatewayUrl">Client Ollama URL</label>
                 <input id="clientGatewayUrl" type="text" readonly />
                 <button id="copyGatewayUrlBtn" class="secondary-button" type="button">Copy client URL</button>
@@ -131,7 +174,7 @@
                 <button id="generateGatewayKeyBtn" class="secondary-button" type="button">Generate / rotate client key</button>
                 <button id="copyGatewayKeyBtn" class="secondary-button" type="button" disabled>Copy client key</button>
                 <p id="gatewayKeyMessage" class="field-help" role="status">Generate and copy a key, enable the proxy, then save. Clients must use Authorization: Bearer &lt;key&gt;.</p>
-                <p class="field-help warning-copy">Use only on a trusted private network or VPN. HTTP does not encrypt client keys in transit; never expose this proxy directly to the public internet.</p>
+                <p class="field-help warning-copy">Unauthenticated proxy access is limited to private and link-local client IP addresses. Keep port 11434 behind a trusted LAN/VPN firewall; do not expose it directly to the public internet.</p>
 
                 <button id="saveSettingsBtn" class="primary-button" type="submit">Save connection settings <span aria-hidden="true">→</span></button>
                 <p id="settingsMessage" class="form-message" role="status"></p>

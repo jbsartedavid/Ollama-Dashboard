@@ -28,6 +28,18 @@ function formatBytes(bytes) {
   return `${value.toFixed(unitIndex ? 1 : 0)} ${units[unitIndex]}`;
 }
 
+function formatRate(bytesPerSecond) {
+  if (!Number.isFinite(bytesPerSecond)) return '—';
+  return `${bytesPerSecond <= 0 ? '0 B' : formatBytes(bytesPerSecond)}/s`;
+}
+
+function setUsageBar(id, percentage) {
+  const bar = document.getElementById(id);
+  const value = Number.isFinite(percentage) ? Math.min(100, Math.max(0, percentage)) : 0;
+  bar.setAttribute('aria-valuenow', value.toFixed(1));
+  bar.firstElementChild.style.width = `${value}%`;
+}
+
 function escapeHtml(value) {
   return String(value ?? '').replace(/[&<>"']/g, (character) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -113,11 +125,73 @@ async function refreshHealth() {
   }
 }
 
+function renderSystemMetrics(data) {
+  const cpu = data.cpu;
+  const memory = data.memory;
+  const virtualMemory = data.virtualMemory;
+  const disk = data.disk;
+  document.getElementById('systemCpuValue').textContent = `${Math.round(cpu.percent)}%`;
+  document.getElementById('systemCpuDetail').textContent = `${numberFormat.format(cpu.logicalCores)} logical cores`;
+  setUsageBar('systemCpuBar', cpu.percent);
+
+  document.getElementById('systemMemoryValue').textContent = `${memory.percent.toFixed(1)}%`;
+  document.getElementById('systemMemoryDetail').textContent =
+    `${formatBytes(memory.usedBytes)} / ${formatBytes(memory.totalBytes)} · ${formatBytes(memory.availableBytes)} available`;
+  setUsageBar('systemMemoryBar', memory.percent);
+
+  document.getElementById('systemVirtualMemoryValue').textContent = `${virtualMemory.percent.toFixed(1)}%`;
+  document.getElementById('systemVirtualMemoryDetail').textContent =
+    `${formatBytes(virtualMemory.usedBytes)} / ${formatBytes(virtualMemory.totalBytes)} pagefile / swap`;
+  setUsageBar('systemVirtualMemoryBar', virtualMemory.percent);
+
+  document.getElementById('systemDiskLabel').textContent = `${disk.volume} drive`;
+  document.getElementById('systemDiskValue').textContent = `${disk.percent.toFixed(1)}%`;
+  document.getElementById('systemDiskDetail').textContent =
+    `${formatBytes(disk.usedBytes)} / ${formatBytes(disk.totalBytes)} used`;
+  document.getElementById('systemDiskIo').textContent =
+    `Read ${formatRate(disk.readBytesPerSecond)} · Write ${formatRate(disk.writeBytesPerSecond)}`;
+  setUsageBar('systemDiskBar', disk.percent);
+
+  const gpuDevices = data.gpu.devices || [];
+  document.getElementById('systemGpuState').textContent =
+    data.gpu.status === 'available' ? `${gpuDevices.length} detected` : 'Unavailable';
+  document.getElementById('systemGpuDevices').innerHTML = gpuDevices.length
+    ? gpuDevices.map((gpu) => {
+      const utilization = Number.isFinite(gpu.utilizationPercent) ? `${gpu.utilizationPercent.toFixed(0)}%` : '—';
+      const memoryUsed = Number.isFinite(gpu.memoryUsedMb) ? gpu.memoryUsedMb * 1024 * 1024 : NaN;
+      const memoryTotal = Number.isFinite(gpu.memoryTotalMb) ? gpu.memoryTotalMb * 1024 * 1024 : NaN;
+      const memoryPercent = Number.isFinite(gpu.memoryUsedMb) && gpu.memoryTotalMb > 0
+        ? Math.min(100, gpu.memoryUsedMb * 100 / gpu.memoryTotalMb)
+        : 0;
+      const details = [
+        `VRAM ${formatBytes(memoryUsed)} / ${formatBytes(memoryTotal)}`,
+        Number.isFinite(gpu.temperatureC) ? `${gpu.temperatureC.toFixed(0)}°C` : null,
+        Number.isFinite(gpu.powerWatts) ? `${gpu.powerWatts.toFixed(0)} W` : null
+      ].filter(Boolean).join(' · ');
+      return `<div class="gpu-device">
+        <span class="gpu-device-name" title="${escapeHtml(gpu.name)}">${escapeHtml(gpu.name)} · ${utilization}</span>
+        <div class="usage-track" role="progressbar" aria-label="${escapeHtml(gpu.name)} VRAM utilization" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${memoryPercent.toFixed(1)}"><span style="width:${memoryPercent}%"></span></div>
+        <span class="hardware-detail">${escapeHtml(details)}</span>
+      </div>`;
+    }).join('')
+    : `<div class="muted-copy" title="${escapeHtml(data.gpu.error || '')}">${escapeHtml(data.gpu.error || 'No GPU telemetry available.')}</div>`;
+  const sampledAt = new Date(data.sampledAt);
+  document.getElementById('systemSampleTime').textContent = Number.isNaN(sampledAt.getTime())
+    ? 'Just sampled'
+    : `Sampled ${sampledAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+}
+
+async function refreshSystemMetrics() {
+  const data = await getJson('/api/system');
+  renderSystemMetrics(data);
+}
+
 async function loadSettings() {
   const settings = await getJson('/api/settings');
   document.getElementById('ollamaBaseUrl').value = settings.baseUrl;
   document.getElementById('keepAliveInput').value = settings.keepAlive;
   document.getElementById('gatewayEnabled').checked = settings.gatewayEnabled;
+  document.getElementById('gatewayAuthRequired').checked = settings.gatewayAuthRequired;
   document.getElementById('clientGatewayUrl').value = settings.clientGatewayUrl;
   document.getElementById('clientAccessKey').value = '';
   document.getElementById('clientAccessKey').type = 'password';
@@ -130,6 +204,11 @@ async function loadSettings() {
     gatewayKeyMessage.textContent = settings.clientAccessKeyConfigured
       ? 'A client key is configured. Generate/rotate it to display a new key. The current key cannot be viewed again.'
       : 'Generate a key, copy it now, then enable the proxy and save. Use Authorization: Bearer <key> on clients.';
+  }
+  if (gatewayKeyMessage.dataset.generated !== 'true') {
+    gatewayKeyMessage.textContent = settings.clientAccessKeyConfigured
+      ? 'A client key is saved. The key is optional on trusted private networks unless Require a dashboard key is enabled.'
+      : 'No key is needed for clients on trusted private networks. Generate one only if you enable the client key requirement.';
   }
   gatewayKeyMessage.classList.remove('error');
   apiKeyInput.value = '';
@@ -156,6 +235,7 @@ async function saveSettings(event) {
         baseUrl: document.getElementById('ollamaBaseUrl').value,
         keepAlive: document.getElementById('keepAliveInput').value,
         gatewayEnabled: document.getElementById('gatewayEnabled').checked,
+        gatewayAuthRequired: document.getElementById('gatewayAuthRequired').checked,
         apiKey: apiKeyInput.value,
         clearApiKey: clearApiKeyInput.checked
       })
@@ -186,7 +266,7 @@ async function generateGatewayKey() {
     document.getElementById('clientAccessKey').value = data.clientAccessKey;
     document.getElementById('copyGatewayKeyBtn').disabled = false;
     document.getElementById('gatewayEnabled').checked = true;
-    gatewayKeyMessage.textContent = 'New key generated. Copy it now; it will not be shown again after reload. Save settings to enable the proxy.';
+    gatewayKeyMessage.textContent = 'New key generated. Copy it now; it will not be shown again after reload. Enable the key requirement to use it.';
     gatewayKeyMessage.dataset.generated = 'true';
   } catch (error) {
     gatewayKeyMessage.textContent = error.message;
@@ -309,10 +389,16 @@ async function refreshMetrics() {
 }
 
 async function refreshDashboard() {
-  const results = await Promise.allSettled([refreshHealth(), refreshMetrics()]);
+  const results = await Promise.allSettled([refreshHealth(), refreshMetrics(), refreshSystemMetrics()]);
   if (results[1].status === 'rejected') {
     document.getElementById('activityList').innerHTML =
       `<div class="muted-copy">${escapeHtml(results[1].reason.message || 'Unable to load activity metrics.')}</div>`;
+  }
+  if (results[2].status === 'rejected') {
+    const message = results[2].reason.message || 'Unable to load system metrics.';
+    document.getElementById('systemSampleTime').textContent = 'Unavailable';
+    document.getElementById('systemGpuState').textContent = 'Unavailable';
+    document.getElementById('systemGpuDevices').innerHTML = `<div class="muted-copy">${escapeHtml(message)}</div>`;
   }
 }
 

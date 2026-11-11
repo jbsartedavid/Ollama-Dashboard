@@ -15,7 +15,22 @@ from app import app
 
 HOST = "127.0.0.1"
 BIND_HOST = "0.0.0.0"
-PORT = int(os.getenv("OLLAMA_DASHBOARD_PORT", "5000"))
+
+
+def _configured_port() -> int:
+    value = os.getenv("OLLAMA_DASHBOARD_PORT")
+    if value is None and os.name == "nt":
+        import winreg
+
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                value, _ = winreg.QueryValueEx(key, "OLLAMA_DASHBOARD_PORT")
+        except OSError:
+            value = None
+    return int(value or "5000")
+
+
+PORT = _configured_port()
 DASHBOARD_URL = f"http://{HOST}:{PORT}/"
 
 
@@ -42,6 +57,11 @@ def _find_available_port() -> int:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
             probe.settimeout(0.2)
             if probe.connect_ex((HOST, port)) == 0:
+                if port == PORT == 11434:
+                    raise OSError(
+                        "Port 11434 is reserved for the Ollama monitoring proxy but is already in use. "
+                        "Stop the Ollama Desktop server before starting the dashboard."
+                    )
                 continue
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as candidate:
             try:

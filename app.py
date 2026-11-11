@@ -1,23 +1,36 @@
+import csv
+import ctypes
+import ctypes.wintypes
 import hmac
 import ipaddress
 import json
 import os
 import re
 import secrets
+import shutil
 import socket
 import sqlite3
+import subprocess
 import sys
+import threading
 import time
-import ctypes
-import ctypes.wintypes
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 from urllib.parse import urlsplit
 
+import psutil
 import requests
-from flask import Flask, Response, jsonify, render_template, request, stream_with_context
+from flask import (
+    Flask,
+    Response,
+    has_request_context,
+    jsonify,
+    render_template,
+    request,
+    stream_with_context,
+)
 
 app = Flask(__name__)
 ENV_OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
@@ -29,6 +42,10 @@ else:
     default_database_path = Path(app.root_path) / "dashboard.db"
 DATABASE_PATH = os.getenv("DASHBOARD_DATABASE", str(default_database_path))
 _DPAPI_ENTROPY = b"OllamaDashboard.Settings.v1"
+_telemetry_lock = threading.Lock()
+_last_disk_io = psutil.disk_io_counters()
+_last_disk_io_at = time.monotonic()
+psutil.cpu_percent(interval=None)
 
 
 class _DataBlob(ctypes.Structure):
@@ -194,11 +211,33 @@ def _has_secret(name: str) -> bool:
     return row is not None
 
 
-def _get_ollama_config() -> dict[str, str]:
+def _get_ollama_config() -> dict[str, Any]:
+    base_url = _get_setting("base_url", ENV_OLLAMA_BASE_URL)
+    parsed_url = urlsplit(base_url)
+    hostname = parsed_url.hostname or ""
+    try:
+        is_loopback = ipaddress.ip_address(hostname).is_loopback
+    except ValueError:
+        is_loopback = hostname.lower() == "localhost"
+
+    listener_port = (
+        request.environ.get("SERVER_PORT", "")
+        if has_request_context()
+        else os.getenv("OLLAMA_DASHBOARD_PORT", "")
+    )
+    uses_default_client_port = listener_port == "11434"
+    if uses_default_client_port and is_loopback and parsed_url.port == 11434:
+        netloc = f"[{hostname}]:11435" if ":" in hostname else f"{hostname}:11435"
+        base_url = parsed_url._replace(netloc=netloc).geturl()
+        parsed_url = urlsplit(base_url)
+    port_takeover = uses_default_client_port and is_loopback and parsed_url.port == 11435
     return {
-        "base_url": _get_setting("base_url", ENV_OLLAMA_BASE_URL),
+        "base_url": base_url,
         "keep_alive": _get_setting("keep_alive", "5m"),
-        "gateway_enabled": _get_setting("gateway_enabled", "false") == "true",
+        "gateway_enabled": (
+            port_takeover or _get_setting("gateway_enabled", "false") == "true"
+        ),
+        "gateway_auth_required": _get_setting("gateway_auth_required", "false") == "true",
     }
 
 
@@ -208,6 +247,7 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
     api_key = body.get("apiKey", "")
     clear_api_key = body.get("clearApiKey", False)
     gateway_enabled = body.get("gatewayEnabled", False)
+    gateway_auth_required = body.get("gatewayAuthRequired", False)
 
     if not all(isinstance(value, str) for value in (base_url, keep_alive, api_key)):
         return None, "Server URL, keep-alive, and API key must be strings."
@@ -215,6 +255,8 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
         return None, "clearApiKey must be a boolean."
     if not isinstance(gateway_enabled, bool):
         return None, "gatewayEnabled must be a boolean."
+    if not isinstance(gateway_auth_required, bool):
+        return None, "gatewayAuthRequired must be a boolean."
 
     base_url = base_url.strip().rstrip("/")
     keep_alive = keep_alive.strip()
@@ -241,13 +283,14 @@ def _validate_settings(body: dict[str, Any]) -> tuple[dict[str, Any] | None, str
         return None, "API key is too long."
     if api_key and sys.platform != "win32":
         return None, "API key storage is supported on Windows using the current user's DPAPI."
-    if gateway_enabled and not _has_secret("gateway_access_key"):
+    if gateway_enabled and gateway_auth_required and not _has_secret("gateway_access_key"):
         return None, "Generate a client access key before enabling the network proxy."
 
     return {
         "base_url": base_url,
         "keep_alive": keep_alive,
         "gateway_enabled": gateway_enabled,
+        "gateway_auth_required": gateway_auth_required,
         "api_key": api_key,
         "clear_api_key": clear_api_key,
     }, None
@@ -263,6 +306,10 @@ def _save_ollama_config(values: dict[str, Any]) -> None:
                 ("base_url", values["base_url"]),
                 ("keep_alive", values["keep_alive"]),
                 ("gateway_enabled", "true" if values["gateway_enabled"] else "false"),
+                (
+                    "gateway_auth_required",
+                    "true" if values["gateway_auth_required"] else "false",
+                ),
             ],
         )
         if values["clear_api_key"]:
@@ -298,11 +345,30 @@ def _is_loopback_request() -> bool:
         return False
 
 
+def _is_trusted_lan_request() -> bool:
+    try:
+        address = ipaddress.ip_address(request.remote_addr or "")
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    if address.is_loopback or address.is_link_local:
+        return True
+    trusted_networks = (
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("fc00::/7"),
+    )
+    return any(address.version == network.version and address in network for network in trusted_networks)
+
+
 @app.before_request
 def restrict_remote_dashboard_access():
     if not _is_loopback_request() and request.endpoint not in {
         "generate_text",
         "ollama_client_proxy",
+        "openai_client_proxy",
         "ollama_proxy",
     }:
         return jsonify({"error": "The dashboard management interface is available on this computer only."}), 403
@@ -326,7 +392,7 @@ def _copy_proxy_headers() -> dict[str, str]:
 
 
 def _activity_prompt(path: str, body: dict[str, Any]) -> str:
-    if path == "api/generate":
+    if path in {"api/generate", "v1/completions"}:
         prompt = body.get("prompt", "")
         return prompt if isinstance(prompt, str) else json.dumps(prompt, ensure_ascii=False)
     messages = body.get("messages", [])
@@ -337,6 +403,67 @@ def _activity_prompt(path: str, body: dict[str, Any]) -> str:
         for message in messages
         if isinstance(message, dict)
     )
+
+
+def _activity_data(path: str, data: dict[str, Any]) -> dict[str, Any]:
+    if not path.startswith("v1/"):
+        return data
+    usage = data.get("usage")
+    if not isinstance(usage, dict):
+        return {}
+    return {
+        "prompt_eval_count": usage.get("prompt_tokens"),
+        "eval_count": usage.get("completion_tokens"),
+    }
+
+
+def _openai_response_text(path: str, data: dict[str, Any]) -> str:
+    choices = data.get("choices")
+    if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+        return ""
+    choice = choices[0]
+    if path == "v1/completions":
+        text = choice.get("text", "")
+        return text if isinstance(text, str) else ""
+    message = choice.get("message", {})
+    text = message.get("content", "") if isinstance(message, dict) else ""
+    if isinstance(text, str):
+        return text
+    return json.dumps(text, ensure_ascii=False) if isinstance(text, list) else ""
+
+
+def _stream_activity_item(path: str, line: bytes) -> tuple[dict[str, Any] | None, str]:
+    payload = line
+    if path.startswith("v1/"):
+        if not line.startswith(b"data:"):
+            return None, ""
+        payload = line[5:].strip()
+        if payload == b"[DONE]":
+            return None, ""
+    try:
+        item = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None, ""
+    if not isinstance(item, dict):
+        return None, ""
+    if path.startswith("v1/"):
+        choices = item.get("choices")
+        if not isinstance(choices, list) or not choices or not isinstance(choices[0], dict):
+            return item, ""
+        choice = choices[0]
+        delta = choice.get("delta", {})
+        if isinstance(delta, dict):
+            part = delta.get("content", "")
+            if isinstance(part, str):
+                return item, part
+        text = choice.get("text", "")
+        return item, text if isinstance(text, str) else ""
+    if path == "api/generate":
+        part = item.get("response", "")
+    else:
+        message = item.get("message", {})
+        part = message.get("content", "") if isinstance(message, dict) else ""
+    return item, part if isinstance(part, str) else ""
 
 
 def _record_proxy_activity(
@@ -371,13 +498,22 @@ def ollama_proxy(ollama_path: str):
         return jsonify({"error": "The authenticated Ollama network proxy is disabled in dashboard settings."}), 403
 
     try:
-        expected_key = _get_secret("gateway_access_key")
+        expected_key = (
+            _get_secret("gateway_access_key")
+            if config["gateway_auth_required"]
+            else "private-lan-client"
+        )
     except (OSError, RuntimeError, UnicodeDecodeError):
         app.logger.exception("Could not read the encrypted client access key")
         return jsonify({"error": "Could not read the saved client access key."}), 500
     provided_key = request.headers.get("Authorization", "")
+    if not config["gateway_auth_required"]:
+        provided_key = f"Bearer {expected_key}"
     if not expected_key or not hmac.compare_digest(provided_key, f"Bearer {expected_key}"):
         return jsonify({"error": "A valid dashboard client access key is required."}), 401
+
+    if not config["gateway_auth_required"] and not _is_trusted_lan_request():
+        return jsonify({"error": "Unauthenticated Ollama access is limited to trusted private networks."}), 403
 
     path = ollama_path.lstrip("/")
     allowed_paths = {
@@ -394,16 +530,25 @@ def ollama_proxy(ollama_path: str):
         "api/show",
         "api/tags",
         "api/version",
+        "v1/chat/completions",
+        "v1/completions",
+        "v1/embeddings",
+        "v1/models",
     }
     if path not in allowed_paths and not path.startswith("api/blobs/"):
-        return jsonify({"error": "Only supported Ollama API routes can be proxied."}), 404
+        return jsonify({"error": "Only supported Ollama and OpenAI-compatible API routes can be proxied."}), 404
 
     body_bytes = request.get_data(cache=True) if request.method in {"POST", "DELETE"} else None
     body = request.get_json(silent=True)
     body = body if isinstance(body, dict) else {}
     model = body.get("model", "")
     model = model if isinstance(model, str) else ""
-    monitored = path in {"api/generate", "api/chat"}
+    monitored = path in {
+        "api/generate",
+        "api/chat",
+        "v1/chat/completions",
+        "v1/completions",
+    }
     prompt = _activity_prompt(path, body) if monitored else ""
     started_at = time.perf_counter()
 
@@ -476,21 +621,14 @@ def ollama_proxy(ollama_path: str):
             try:
                 for line in upstream.iter_lines():
                     if not line:
+                        if path.startswith("v1/"):
+                            yield b"\n"
                         continue
-                    try:
-                        item = json.loads(line)
-                    except (json.JSONDecodeError, UnicodeDecodeError):
-                        item = {}
-                    if isinstance(item, dict):
-                        if path == "api/generate":
-                            part = item.get("response", "")
-                        else:
-                            message = item.get("message", {})
-                            part = message.get("content", "") if isinstance(message, dict) else ""
-                        if isinstance(part, str):
-                            generated_parts.append(part)
-                        if item.get("done"):
-                            final_data = item
+                    item, part = _stream_activity_item(path, line)
+                    if part:
+                        generated_parts.append(part)
+                    if item and (item.get("done") or item.get("usage")):
+                        final_data = _activity_data(path, item)
                     yield line + b"\n"
                 _record_proxy_activity(
                     path=path,
@@ -541,11 +679,16 @@ def ollama_proxy(ollama_path: str):
     finally:
         upstream.close()
 
-    if path == "api/generate":
+    if path.startswith("v1/"):
+        response_text = _openai_response_text(path, result)
+        activity_data = _activity_data(path, result)
+    elif path == "api/generate":
         response_text = result.get("response", "")
+        activity_data = result
     else:
         message = result.get("message", {})
         response_text = message.get("content", "") if isinstance(message, dict) else ""
+        activity_data = result
     _record_proxy_activity(
         path=path,
         model=result.get("model", model),
@@ -554,7 +697,7 @@ def ollama_proxy(ollama_path: str):
         status="success",
         error=None,
         started_at=started_at,
-        ollama_data=result,
+        ollama_data=activity_data,
     )
     return Response(content, status=upstream.status_code, headers=response_headers)
 
@@ -565,6 +708,14 @@ def ollama_client_proxy(ollama_path: str):
     if _is_loopback_request():
         return jsonify({"error": "The root API proxy is reserved for remote authenticated clients."}), 404
     return ollama_proxy(f"api/{ollama_path}" if ollama_path else "api")
+
+
+@app.route("/v1/", defaults={"openai_path": ""}, methods=["GET", "POST", "DELETE"], endpoint="openai_client_proxy")
+@app.route("/v1/<path:openai_path>", methods=["GET", "POST", "DELETE"], endpoint="openai_client_proxy")
+def openai_client_proxy(openai_path: str):
+    if _is_loopback_request():
+        return jsonify({"error": "The root OpenAI-compatible proxy is reserved for remote authenticated clients."}), 404
+    return ollama_proxy(f"v1/{openai_path}" if openai_path else "v1")
 
 
 def _record_activity(
@@ -674,6 +825,7 @@ def ollama_settings():
                 "keepAlive": config["keep_alive"],
                 "apiKeyConfigured": api_key_configured,
                 "gatewayEnabled": config["gateway_enabled"],
+                "gatewayAuthRequired": config["gateway_auth_required"],
                 "clientAccessKeyConfigured": _has_secret("gateway_access_key"),
                 "clientGatewayUrl": _client_gateway_url(),
             }
@@ -826,6 +978,125 @@ def health_check():
     )
 
 
+def _nvidia_metrics() -> dict[str, Any]:
+    executable = shutil.which("nvidia-smi")
+    if not executable:
+        return {
+            "status": "unavailable",
+            "error": "nvidia-smi was not found; NVIDIA GPU telemetry is unavailable.",
+            "devices": [],
+        }
+    try:
+        result = subprocess.run(
+            [
+                executable,
+                "--query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=3,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        app.logger.exception("Could not read NVIDIA GPU metrics")
+        return {"status": "unavailable", "error": str(exc), "devices": []}
+    if result.returncode:
+        error = result.stderr.strip() or f"nvidia-smi exited with code {result.returncode}."
+        return {"status": "unavailable", "error": error, "devices": []}
+
+    def optional_number(value: str) -> float | None:
+        value = value.strip()
+        if not value or value.upper() in {"N/A", "[N/A]", "NOT SUPPORTED"}:
+            return None
+        return float(value)
+
+    try:
+        devices = []
+        for row in csv.reader(result.stdout.splitlines()):
+            if len(row) != 6:
+                raise ValueError("nvidia-smi returned an unexpected GPU metrics row.")
+            devices.append(
+                {
+                    "name": row[0].strip(),
+                    "utilizationPercent": optional_number(row[1]),
+                    "memoryUsedMb": optional_number(row[2]),
+                    "memoryTotalMb": optional_number(row[3]),
+                    "temperatureC": optional_number(row[4]),
+                    "powerWatts": optional_number(row[5]),
+                }
+            )
+    except ValueError as exc:
+        app.logger.exception("Could not parse NVIDIA GPU metrics")
+        return {"status": "unavailable", "error": str(exc), "devices": []}
+    if not devices:
+        return {"status": "unavailable", "error": "No NVIDIA GPUs were reported.", "devices": []}
+    return {"status": "available", "error": None, "devices": devices}
+
+
+def _disk_io_rates() -> tuple[float, float]:
+    global _last_disk_io, _last_disk_io_at
+    sampled_at = time.monotonic()
+    with _telemetry_lock:
+        current = psutil.disk_io_counters()
+        previous = _last_disk_io
+        elapsed = sampled_at - _last_disk_io_at
+        _last_disk_io = current
+        _last_disk_io_at = sampled_at
+    if previous is None or current is None or elapsed <= 0:
+        return 0.0, 0.0
+    read_delta = max(0, current.read_bytes - previous.read_bytes)
+    write_delta = max(0, current.write_bytes - previous.write_bytes)
+    return read_delta / elapsed, write_delta / elapsed
+
+
+@app.route("/api/system")
+def system_metrics():
+    try:
+        cpu_percent = psutil.cpu_percent(interval=None)
+        memory = psutil.virtual_memory()
+        virtual_memory = psutil.swap_memory()
+        system_volume = os.path.abspath(os.sep)
+        disk_space = psutil.disk_usage(system_volume)
+        read_bytes_per_second, write_bytes_per_second = _disk_io_rates()
+    except (OSError, psutil.Error) as exc:
+        app.logger.exception("Could not read host system metrics")
+        return jsonify({"error": f"Could not read host system metrics: {exc}"}), 500
+
+    return jsonify(
+        {
+            "sampledAt": datetime.now(timezone.utc).isoformat(),
+            "cpu": {
+                "percent": cpu_percent,
+                "logicalCores": psutil.cpu_count(logical=True) or 0,
+            },
+            "memory": {
+                "totalBytes": memory.total,
+                "usedBytes": memory.used,
+                "availableBytes": memory.available,
+                "percent": memory.percent,
+            },
+            "virtualMemory": {
+                "totalBytes": virtual_memory.total,
+                "usedBytes": virtual_memory.used,
+                "availableBytes": max(0, virtual_memory.total - virtual_memory.used),
+                "percent": virtual_memory.percent,
+            },
+            "disk": {
+                "volume": system_volume,
+                "totalBytes": disk_space.total,
+                "usedBytes": disk_space.used,
+                "freeBytes": disk_space.free,
+                "percent": disk_space.percent,
+                "readBytesPerSecond": read_bytes_per_second,
+                "writeBytesPerSecond": write_bytes_per_second,
+            },
+            "gpu": _nvidia_metrics(),
+        }
+    )
+
+
 @app.route("/api/metrics")
 def activity_metrics():
     with _db_session() as connection:
@@ -893,4 +1164,8 @@ def activity_metrics():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("OLLAMA_DASHBOARD_PORT", "5000")),
+        debug=False,
+    )

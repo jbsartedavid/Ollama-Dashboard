@@ -193,6 +193,19 @@ h2 { margin: 0; font-size: 15px; letter-spacing: -0.02em; }
 .model-dot { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
 .text-button { padding: 5px 0 5px 8px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 10px; }
 
+.hardware-panel { margin-bottom: 20px; }
+.hardware-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.hardware-card { min-width: 0; padding: 12px; border: 1px solid var(--border); border-radius: 9px; background: rgba(7, 11, 18, 0.4); }
+.hardware-card-heading { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; color: var(--muted); font-size: 10px; }
+.hardware-card-heading strong { color: var(--text); font-size: 15px; }
+.hardware-detail { display: block; margin-top: 7px; color: var(--muted); font-size: 9px; line-height: 1.4; overflow-wrap: anywhere; }
+.usage-track { height: 5px; margin-top: 12px; overflow: hidden; border-radius: 99px; background: #222c3c; }
+.usage-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--accent); transition: width 0.3s ease; }
+.gpu-device-list { display: grid; gap: 10px; margin-top: 10px; }
+.gpu-device { min-width: 0; }
+.gpu-device-name { display: block; overflow: hidden; color: #d3dcec; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.gpu-device .usage-track { margin-top: 7px; }
+
 .compose-panel label, .settings-panel label:not(.checkbox-label) { display: block; margin: 14px 0 7px; color: #aab6c9; font-size: 10px; font-weight: 600; }
 select, textarea, .settings-panel input:not([type="checkbox"]) {
   width: 100%;
@@ -253,6 +266,7 @@ textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
 @media (max-width: 1000px) {
   .container { padding: 0 22px 26px; }
   .main-grid { grid-template-columns: minmax(0, 1.4fr) minmax(290px, 0.9fr); }
+  .hardware-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .activity-row { grid-template-columns: 72px minmax(95px, 0.7fr) minmax(100px, 1.2fr) auto; gap: 8px; }
   .activity-meta { gap: 5px; }
 }
@@ -262,6 +276,7 @@ textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
   .header-right { gap: 8px; }
   .last-updated { display: none; }
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .hardware-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-card { min-height: 108px; padding: 15px; }
   .metric-value { margin-top: 11px; font-size: 23px; }
   .main-grid { grid-template-columns: 1fr; }
@@ -269,6 +284,7 @@ textarea { min-height: 88px; resize: vertical; line-height: 1.5; }
   .model-activity-row { grid-template-columns: minmax(90px, 1fr) repeat(3, minmax(60px, auto)); gap: 7px; }
 }
 @media (max-width: 460px) {
+  .hardware-grid { grid-template-columns: 1fr; }
   .brand-mark { width: 36px; height: 36px; }
   h1 { font-size: 17px; }
   .activity-row { grid-template-columns: 52px minmax(0, 1fr) auto; gap: 8px; padding: 9px 0; }
